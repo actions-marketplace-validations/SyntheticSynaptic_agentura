@@ -103,7 +103,7 @@ agentura/
 
 | Milestone | Status | Completed |
 |---|---|---|
-| 1 — Monorepo scaffold | ⬜ Not started | — |
+| 1 — Monorepo scaffold | ✅ Complete | 2026-02-26 |
 | 2 — Database schema | ⬜ Not started | — |
 | 3 — Shared types + eval-runner package | ⬜ Not started | — |
 | 4 — Next.js base + tRPC + GitHub OAuth | ⬜ Not started | — |
@@ -189,10 +189,10 @@ pnpm run dev              # apps/web starts at localhost:3000
 ```
 
 **Acceptance criteria:**
-- [ ] `localhost:3000` returns a Next.js page
-- [ ] `pnpm run type-check` exits 0
-- [ ] `.env.example` exists with all variables listed
-- [ ] `packages/cli` has a `bin` field pointing to the CLI entry point
+- [x] `localhost:3000` returns a Next.js page
+- [x] `pnpm run type-check` exits 0
+- [x] `.env.example` exists with all variables listed
+- [x] `packages/cli` has a `bin` field pointing to the CLI entry point
 
 ---
 
@@ -1044,10 +1044,11 @@ pnpm run type-check
 
 ## Surprises & Discoveries
 
-*(Agent fills in as work proceeds)*
+- 2026-02-26: Next.js 14 rejects `next.config.ts`; use `next.config.mjs` with `export default` syntax in this repo.
+- 2026-02-26: A CLI scaffold `dev` script that exits immediately causes root `turbo run dev --parallel` to fail even if the web app starts; workspace `dev` scripts must stay alive.
 
 ---
 
 ## Outcomes & Retrospective
 
-*(Agent fills in at milestone completion)*
+- Milestone 1 complete: monorepo scaffold created, root `pnpm install`, `pnpm run build`, and `pnpm run type-check` pass, and root `pnpm run dev` starts the Next.js app at `localhost:3000`.
