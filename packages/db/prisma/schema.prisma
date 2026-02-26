@@ -7,3 +7,117 @@ datasource db {
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
+
+model User {
+  id            String         @id @default(uuid())
+  githubId      String         @unique
+  githubLogin   String
+  email         String?
+  avatarUrl     String?
+  apiKey        String?        @unique // hashed, for CLI auth
+  createdAt     DateTime       @default(now())
+  installations Installation[]
+  projects      Project[]
+}
+
+model Installation {
+  id              String    @id @default(uuid())
+  githubInstallId Int       @unique // GitHub App installation ID
+  userId          String?
+  user            User?     @relation(fields: [userId], references: [id])
+  accountLogin    String    // org or user login
+  accountType     String    // User | Organization
+  createdAt       DateTime  @default(now())
+  projects        Project[]
+}
+
+model Project {
+  id             String           @id @default(uuid())
+  installationId String
+  installation   Installation     @relation(fields: [installationId], references: [id])
+  userId         String?
+  user           User?            @relation(fields: [userId], references: [id])
+  owner          String           // GitHub owner (org or user)
+  repo           String           // GitHub repo name
+  defaultBranch  String           @default("main")
+  createdAt      DateTime         @default(now())
+  evalRuns       EvalRun[]
+  settings       ProjectSettings?
+
+  @@unique([owner, repo])
+}
+
+model ProjectSettings {
+  id                  String   @id @default(uuid())
+  projectId           String   @unique
+  project             Project  @relation(fields: [projectId], references: [id])
+  regressionThreshold Float    @default(0.05)
+  retentionDays       Int      @default(30)
+  emailOnFailure      Boolean  @default(true)
+  notifyEmail         String?
+  updatedAt           DateTime @updatedAt
+}
+
+model EvalRun {
+  id               String        @id @default(uuid())
+  projectId        String
+  project          Project       @relation(fields: [projectId], references: [id])
+  branch           String
+  commitSha        String
+  prNumber         Int?
+  status           String        // pending | running | completed | failed
+  triggeredBy      String        // github_app | cli | api
+  githubCheckRunId Int?
+  overallPassed    Boolean?
+  totalCases       Int?
+  passedCases      Int?
+  durationMs       Int?
+  estimatedCostUsd Float?        // stored as float, display only (not financial)
+  createdAt        DateTime      @default(now())
+  completedAt      DateTime?
+  suiteResults     SuiteResult[]
+}
+
+model SuiteResult {
+  id            String       @id @default(uuid())
+  evalRunId     String
+  evalRun       EvalRun      @relation(fields: [evalRunId], references: [id])
+  suiteName     String
+  strategy      String       // golden_dataset | llm_judge | performance
+  score         Float        // 0.0 to 1.0
+  threshold     Float        // 0.0 to 1.0
+  passed        Boolean
+  baselineScore Float?       // score from baseline run for comparison (0.0 to 1.0)
+  regressed     Boolean?
+  totalCases    Int
+  passedCases   Int
+  durationMs    Int
+  createdAt     DateTime     @default(now())
+  caseResults   CaseResult[]
+}
+
+model CaseResult {
+  id            String      @id @default(uuid())
+  suiteResultId String
+  suiteResult   SuiteResult @relation(fields: [suiteResultId], references: [id])
+  caseIndex     Int
+  input         String      // truncated to 10k chars
+  output        String?     // truncated to 10k chars
+  expected      String?     // truncated to 10k chars
+  score         Float       // 0.0 to 1.0
+  passed        Boolean
+  judgeReason   String?     // LLM judge explanation
+  latencyMs     Int?
+  inputTokens   Int?
+  outputTokens  Int?
+  errorMessage  String?
+  createdAt     DateTime    @default(now())
+}
+
+model EmbeddingCache {
+  id        String   @id @default(uuid())
+  textHash  String   @unique // SHA-256 of the text
+  model     String
+  embedding Float[]           // stored as array
+  createdAt DateTime @default(now())
+}
