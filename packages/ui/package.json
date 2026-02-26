@@ -1,0 +1,9 @@
+{
+  "name": "@agentura/ui",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "node -e \"console.log('No UI wrappers yet (Milestone 1 scaffold).')\"",
+    "type-check": "node -e \"console.log('No UI wrappers yet (Milestone 1 scaffold).')\""
+  }
+}
