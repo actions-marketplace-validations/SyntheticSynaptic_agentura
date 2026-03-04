@@ -143,12 +143,6 @@ async function handleInstallationCreated(payload: InstallationPayload) {
       }));
     }
 
-    console.log(
-      "[webhook] repositories found:",
-      repositories.length,
-      repositories.map((repository) => repository.full_name)
-    );
-
     for (const repository of repositories) {
       const fullName = toStringValue(repository.full_name);
       const ownerFromFullName = fullName ? fullName.split("/")[0] ?? null : null;

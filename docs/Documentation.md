@@ -7,10 +7,10 @@
 
 ## Current Status
 
-**Active milestone:** 4 — Next.js Base + tRPC + GitHub OAuth
-**Progress:** 3 / 17 milestones complete
-**Last updated:** Milestone 4 foundations implemented and automated validation checks passed
-**Next action:** Run manual OAuth browser validation steps and confirm end-to-end login/dashboard flow
+**Active milestone:** 6 — Eval worker: golden dataset
+**Progress:** 5 / 17 milestones complete
+**Last updated:** Milestone 6 worker core implementation completed (awaiting manual end-to-end validation)
+**Next action:** Run Milestone 6 end-to-end test (PR-triggered eval run) and verify Supabase EvalRun + GitHub Check Run outputs
 
 ---
 
@@ -50,9 +50,9 @@ cd packages/cli && npx tsx src/index.ts run
 | 1 | Monorepo scaffold | ✅ Complete | Scaffold created, Next.js app responds at localhost:3000, root validations pass |
 | 2 | Database schema | ✅ Complete | Prisma schema + init migration applied, Prisma Studio validated, manual RLS SQL file added for Supabase |
 | 3 | Shared types + eval-runner | ✅ Complete | Shared interfaces implemented; eval-runner scorers/strategies/agent-callers and unit tests pass |
-| 4 | Next.js base + tRPC + GitHub OAuth | 🟡 In progress | Core implementation done; awaiting manual OAuth browser validation |
-| 5 | GitHub App: install + webhook | ⬜ Not started | Requires human to register GitHub App in settings |
-| 6 | Eval worker: golden dataset | ⬜ Not started | — |
+| 4 | Next.js base + tRPC + GitHub OAuth | ✅ Complete | OAuth login/callback, protected routes, users.me, and health endpoint validated |
+| 5 | GitHub App: install + webhook | ✅ Complete | Webhook signature verification, installation/project sync, and eval-run enqueue validated end-to-end |
+| 6 | Eval worker: golden dataset | 🟡 In progress | Worker, queue handler, GitHub fetch/check helpers, and golden suite execution implemented; awaiting manual end-to-end validation |
 | 7 | Eval worker: LLM judge | ⬜ Not started | — |
 | 8 | Eval worker: performance + embeddings | ⬜ Not started | — |
 | 9 | PR comment + Check Run | ⬜ Not started | — |
@@ -73,9 +73,9 @@ Some milestones require human actions outside the codebase. Track them here:
 
 | Milestone | Action | Status |
 |---|---|---|
-| 5 | Register GitHub App at github.com/settings/apps/new. Required permissions documented in Plan.md M5. Set Webhook URL to ngrok/smee URL in dev, Vercel URL in prod. | ⬜ Pending |
-| 5 | Set `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_WEBHOOK_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` in `.env` | ⬜ Pending |
-| 5 | Set up smee.io or ngrok for local webhook forwarding | ⬜ Pending |
+| 5 | Register GitHub App at github.com/settings/apps/new. Required permissions documented in Plan.md M5. Set Webhook URL to ngrok/smee URL in dev, Vercel URL in prod. | ✅ Complete (dev setup) |
+| 5 | Set `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_WEBHOOK_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` in `.env` | ✅ Complete (local) |
+| 5 | Set up smee.io or ngrok for local webhook forwarding | ✅ Complete |
 | 17 | Create Vercel project, connect GitHub repo, set all env vars | ⬜ Pending |
 | 17 | Create Railway project for worker, set all env vars | ⬜ Pending |
 | 17 | Update GitHub App webhook URL to production Vercel domain | ⬜ Pending |
@@ -484,3 +484,73 @@ Milestone 4 — run and confirm the 5 manual OAuth validation checks, then mark 
 
 **Next session:**
 Milestone 4 — confirm post-OAuth dashboard greeting and authenticated `users.me` response, then mark Milestone 4 complete
+
+## Session — 2026-03-04 20:30 UTC
+
+**Milestone:** 5 — GitHub App: Installation + Webhook
+**Status:** COMPLETE
+
+**Files created:**
+- `apps/web/src/lib/github-app.ts` — GitHub App singleton using `@octokit/app` with installation-octokit helper
+- `apps/web/src/lib/queue.ts` — BullMQ `eval-run` queue with ioredis connection and retry/backoff defaults
+- `apps/web/src/app/api/webhooks/github/route.ts` — verified webhook handler for installation/pull_request/push events
+- `apps/web/src/server/routers/projects.ts` — protected `projects.list` and `projects.getByOwnerRepo` procedures
+
+**Files modified:**
+- `apps/web/src/server/routers/_app.ts` — merged `projects` router into root tRPC router
+- `apps/web/src/app/dashboard/page.tsx` — dashboard project list and empty-state install CTA
+- `apps/web/package.json` — added `@octokit/app`, `@octokit/webhooks`, `bullmq`, and `ioredis`
+- `pnpm-lock.yaml` — lockfile updates for approved Milestone 5 dependencies
+- `apps/web/src/app/api/webhooks/github/route.ts` — switched installation user lookup to `githubId`, added repository fallback/API fetch, and removed temporary debug `console.log` statements (kept `console.error` in catch)
+- `docs/Documentation.md` — updated status tables and appended this completion entry
+
+**Decisions made:**
+- Keep installation-to-user linking soft (`userId: null` when user is missing) so app installation works before OAuth login.
+- Fetch repositories from `GET /installation/repositories` when webhook payload repository arrays are empty to support all GitHub installation event shapes.
+
+**Validation results:**
+- `pnpm run type-check`: PASS
+- Manual validation step 1 (invalid signature returns 400): PASS
+- Manual validation step 2 (GitHub App installation triggers webhook): PASS
+- Manual validation step 3 (Installation row created in Supabase): PASS
+- Manual validation step 4 (Project row created in Supabase): PASS
+- Manual validation step 5 (test PR enqueues Upstash job with correct `prNumber` and `branch`): PASS
+- Manual validation step 6 (smee.io receives push/check_suite/pull_request events): PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Milestone 6 — implement worker `eval-run` queue handler and golden_dataset strategy execution with persistent status updates
+
+## Session — 2026-03-04 20:55 UTC
+
+**Milestone:** 6 — Eval worker: golden dataset
+**Status:** IN PROGRESS
+
+**Files created:**
+- `apps/worker/src/github/fetch-config.ts` — GitHub repo file fetcher for `agentura.yaml` and JSONL datasets with `js-yaml` + zod validation and 404 handling
+- `apps/worker/src/github/check-runs.ts` — GitHub Check Run create/update helpers for worker execution lifecycle
+- `apps/worker/src/queue-handlers/eval-run.ts` — BullMQ eval-run processor implementing config fetch, golden suite execution, DB writes, and check-run updates
+- `apps/worker/.env` — worker-local env template with required Milestone 6 keys
+
+**Files modified:**
+- `apps/worker/src/index.ts` — BullMQ worker bootstrap with Redis connection, required env checks, concurrency=3 processing, startup log, and graceful shutdown handlers
+- `apps/worker/package.json` — added approved Milestone 6 dependencies (`@agentura/db`, `@agentura/eval-runner`, `@agentura/types`, `bullmq`, `ioredis`, `@octokit/app`, `js-yaml`, `zod`, `p-limit`, `@types/js-yaml`)
+- `pnpm-lock.yaml` — lockfile updates for approved worker dependencies
+- `docs/Documentation.md` — updated current status and appended this session entry
+
+**Decisions made:**
+- Kept Milestone 6 focused on `golden_dataset` only: `llm_judge` and `performance` suites are logged as skipped.
+- Enforced timeout behavior at agent-call level so timed-out cases record score `0` and `errorMessage: "Agent timed out"` while the suite continues.
+- Used transactional persistence for run completion writes (`EvalRun`, `SuiteResult`, `CaseResult`) to avoid partial completed-state records.
+
+**Validation results:**
+- `pnpm run type-check`: PASS
+- `pnpm run build`: PASS (Next.js build emits non-blocking DNS warnings for Upstash host resolution in this environment, but exits successfully)
+
+**Issues found:**
+- End-to-end worker verification still requires human-run local infrastructure (GitHub App webhook flow + Supabase + Upstash + test PR).
+
+**Next session:**
+Milestone 6 — run manual end-to-end eval worker test and verify: completed `EvalRun` row in Supabase + GitHub Check Run appears on test PR
