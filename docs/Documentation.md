@@ -7,10 +7,10 @@
 
 ## Current Status
 
-**Active milestone:** 2 — Database Schema
-**Progress:** 1 / 17 milestones complete
-**Last updated:** Milestone 1 scaffold completed and validated
-**Next action:** Implement Milestone 2 Prisma schema models, DB package exports, and Supabase RLS migrations
+**Active milestone:** 4 — Next.js Base + tRPC + GitHub OAuth
+**Progress:** 3 / 17 milestones complete
+**Last updated:** Milestone 4 foundations implemented and automated validation checks passed
+**Next action:** Run manual OAuth browser validation steps and confirm end-to-end login/dashboard flow
 
 ---
 
@@ -48,9 +48,9 @@ cd packages/cli && npx tsx src/index.ts run
 | # | Milestone | Status | Notes |
 |---|---|---|---|
 | 1 | Monorepo scaffold | ✅ Complete | Scaffold created, Next.js app responds at localhost:3000, root validations pass |
-| 2 | Database schema | ⬜ Not started | — |
-| 3 | Shared types + eval-runner | ⬜ Not started | — |
-| 4 | Next.js base + tRPC + GitHub OAuth | ⬜ Not started | — |
+| 2 | Database schema | ✅ Complete | Prisma schema + init migration applied, Prisma Studio validated, manual RLS SQL file added for Supabase |
+| 3 | Shared types + eval-runner | ✅ Complete | Shared interfaces implemented; eval-runner scorers/strategies/agent-callers and unit tests pass |
+| 4 | Next.js base + tRPC + GitHub OAuth | 🟡 In progress | Core implementation done; awaiting manual OAuth browser validation |
 | 5 | GitHub App: install + webhook | ⬜ Not started | Requires human to register GitHub App in settings |
 | 6 | Eval worker: golden dataset | ⬜ Not started | — |
 | 7 | Eval worker: LLM judge | ⬜ Not started | — |
@@ -316,3 +316,171 @@ Milestone 2 — implement Prisma schema models, DB exports, and initial migratio
 
 **Next session:**
 Milestone 2 — run Prisma generate/migrate/status/studio after setting `DATABASE_URL` + `DIRECT_URL` and enabling network access for Prisma engine download (or using an already-cached engine)
+
+## Session — 2026-02-26 09:53 UTC
+
+**Milestone:** 2 — Database Schema
+**Status:** IN PROGRESS
+
+**Files created:**
+- None
+
+**Files modified:**
+- `docs/Documentation.md` — appended this follow-up session entry after retrying Prisma validation steps
+
+**Decisions made:**
+- Use escalated Prisma commands for Milestone 2 validation when sandbox network restrictions block Prisma engine downloads.
+
+**Validation results:**
+- `pnpm prisma generate`: PASS (with escalated command and Prisma cache redirected to `/tmp`)
+- `pnpm prisma migrate dev --name init` (attempt 1): FAIL (`Error: Schema engine error:` after connecting to Supabase via direct URL on port 5432)
+- `pnpm prisma migrate dev --name init` (attempt 2, debug env): FAIL (`Error: Schema engine error:` same result, no additional diagnostics printed)
+- `pnpm prisma migrate status`: NOT RUN (blocked until initial migration succeeds)
+- `pnpm prisma studio`: NOT RUN (blocked until migration succeeds)
+- `pnpm run type-check`: PASS (from earlier Milestone 2 session; no schema/type changes since)
+
+**Issues found:**
+- Prisma `migrate dev` is failing with a generic schema engine error against the configured Supabase direct connection (`DIRECT_URL`) despite `prisma generate` succeeding.
+
+**Next session:**
+Milestone 2 — diagnose Supabase `prisma migrate dev` schema engine failure (likely migration/shadow DB permissions or connection-string settings), then run `migrate status`, `studio`, and final type-check
+
+## Session — 2026-03-02 19:19 UTC
+
+**Milestone:** 2 — Database Schema
+**Status:** COMPLETE
+
+**Files created:**
+- `packages/db/prisma/migrations/20260302191259_init/migration.sql` — initial Prisma SQL migration for the 8-table Milestone 2 schema
+- `packages/db/prisma/migrations/migration_lock.toml` — Prisma migration lock metadata
+
+**Files modified:**
+- `docs/Documentation.md` — updated current status/milestone table and appended this completion entry
+
+**Decisions made:**
+- Use Supabase connection URLs exactly as provided (no placeholder tokens) and keep `DIRECT_URL` + `DATABASE_URL` split for migrations vs runtime.
+- Keep `packages/db/prisma/migrations/rls_policies.sql` as a manual Supabase SQL step; Prisma does not auto-apply that file by design.
+
+**Validation results:**
+- `pnpm prisma generate`: PASS
+- `pnpm prisma migrate dev --name init`: PASS (`Already in sync, no schema change or pending migration was found`)
+- `pnpm prisma migrate status`: PASS (`Database schema is up to date!`)
+- `pnpm prisma studio`: PASS (started successfully on `http://localhost:5556`)
+- `pnpm prisma db pull --print`: PASS (introspection shows all 8 Milestone 2 tables and RLS warning banners)
+- `pnpm run type-check`: PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Milestone 3 — implement `@agentura/types` config/execution interfaces and `@agentura/eval-runner` scorers/strategy scaffolding with tests
+
+## Session — 2026-03-02 19:57 UTC
+
+**Milestone:** 3 — Shared Types + Eval Runner Package
+**Status:** COMPLETE
+
+**Files created:**
+- `packages/eval-runner/src/scorers/exact-match.ts` — exact-match scorer implementation
+- `packages/eval-runner/src/scorers/contains.ts` — substring scorer implementation
+- `packages/eval-runner/src/scorers/semantic-similarity.ts` — cosine similarity + embedding cache-aware scorer helper
+- `packages/eval-runner/src/strategies/golden-dataset.ts` — golden dataset execution strategy
+- `packages/eval-runner/src/strategies/llm-judge.ts` — LLM-judge strategy scaffold with deterministic score handling
+- `packages/eval-runner/src/strategies/performance.ts` — performance strategy scaffold with p95/cost-based scoring
+- `packages/eval-runner/src/agent-caller/http.ts` — HTTP agent caller with timeout + safe error return shape
+- `packages/eval-runner/src/agent-caller/cli-runner.ts` — CLI agent caller with timeout + stderr/error handling
+- `packages/eval-runner/src/agent-caller/sdk.ts` — SDK agent caller wrapper for in-process agent functions
+- `packages/eval-runner/src/scorers/exact-match.test.ts` — unit tests for exact-match scorer
+- `packages/eval-runner/src/scorers/contains.test.ts` — unit tests for contains scorer
+- `packages/eval-runner/src/strategies/golden-dataset.test.ts` — unit test validating 3-case suite result shape and scoring
+- `packages/eval-runner/src/agent-caller/http.test.ts` — timeout-path test ensuring HTTP caller returns `errorMessage` instead of throwing
+
+**Files modified:**
+- `packages/types/src/index.ts` — replaced scaffold marker with Milestone 3 shared config/eval/agent/comparison interfaces
+- `packages/eval-runner/src/index.ts` — exports for scorers, strategies, and agent callers
+- `packages/eval-runner/package.json` — added `test` script and ensured eval-runner build/type-check compiles `@agentura/types` first
+- `docs/Plan.md` — marked Milestone 2 and 3 complete in progress table and checked Milestone 3 acceptance criteria
+- `docs/Documentation.md` — updated current status/milestone table and appended this completion entry
+
+**Decisions made:**
+- Use Node’s built-in test runner (`node --test`) for Milestone 3 unit tests to avoid adding dependencies.
+- Keep HTTP caller timeout testing pure by injecting a mock `fetch` that aborts, avoiding sandbox socket binding restrictions.
+
+**Validation results:**
+- `cd packages/eval-runner && pnpm run test`: PASS
+- `cd packages/eval-runner && pnpm run type-check`: PASS
+- `pnpm run type-check`: PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Milestone 4 — implement Next.js auth foundations: GitHub OAuth login page/callback, tRPC context + protected procedure, auth middleware, and `/api/v1/health`
+
+## Session — 2026-03-02 20:26 UTC
+
+**Milestone:** 4 — Next.js Base + tRPC + GitHub OAuth
+**Status:** IN PROGRESS
+
+**Files created:**
+- `apps/web/src/app/(auth)/login/page.tsx` — GitHub OAuth login screen with a single sign-in button
+- `apps/web/src/app/auth/callback/route.ts` — OAuth callback handler that exchanges code, upserts user, and redirects to dashboard
+- `apps/web/src/app/api/trpc/[trpc]/route.ts` — tRPC HTTP adapter route for GET/POST
+- `apps/web/src/app/api/v1/health/route.ts` — REST health endpoint returning status and ISO timestamp
+- `apps/web/src/app/dashboard/page.tsx` — protected dashboard shell calling `users.me` server-side
+- `apps/web/src/middleware.ts` — request middleware for session refresh + `/dashboard` protection
+- `apps/web/src/server/trpc.ts` — tRPC init/context with Supabase session auth and API key fallback
+- `apps/web/src/server/routers/_app.ts` — root app router with `users` router merged
+- `apps/web/src/server/routers/users.ts` — protected `users.me` procedure backed by Prisma `User` lookup
+- `apps/web/src/lib/supabase/server.ts` — server Supabase client factory using `cookies()`
+- `apps/web/src/lib/supabase/client.ts` — browser Supabase client factory for client components
+- `apps/web/src/lib/supabase/middleware.ts` — Supabase session refresh helper used by middleware
+- `apps/web/src/components/providers.tsx` — React Query + tRPC provider wiring for App Router
+
+**Files modified:**
+- `apps/web/src/app/layout.tsx` — wrapped app tree with shared providers
+- `apps/web/src/app/page.tsx` — replaced placeholder with minimal running landing page
+- `apps/web/package.json` — added Milestone 4 runtime deps (`@supabase/ssr`, tRPC, React Query, `superjson`, `@agentura/db`)
+- `docs/Documentation.md` — updated milestone status and appended this session entry
+
+**Decisions made:**
+- Use tRPC v11 transformer wiring on `httpBatchLink` (client side) with `superjson`, while keeping server transformer in `initTRPC`.
+- Keep middleware session refresh helper fail-open when Supabase public env vars are missing so `/api/v1/health` remains callable during local setup.
+
+**Validation results:**
+- `pnpm run type-check`: PASS
+- `curl http://localhost:3000/api/v1/health`: PASS (`{"status":"ok","timestamp":"..."}`)
+
+**Issues found:**
+- Manual OAuth browser validation is still pending human confirmation (`/login` button, GitHub redirect/approval, callback, dashboard welcome, incognito redirect behavior, `users.me` payload).
+
+**Next session:**
+Milestone 4 — run and confirm the 5 manual OAuth validation checks, then mark Milestone 4 complete and update Plan/Documentation status
+
+## Session — 2026-03-02 23:44 UTC
+
+**Milestone:** 4 — Next.js Base + tRPC + GitHub OAuth
+**Status:** IN PROGRESS
+
+**Files created:**
+- None
+
+**Files modified:**
+- `docs/Documentation.md` — appended this validation-only session entry
+
+**Decisions made:**
+- Use `http://localhost:3001` for browser checks in this session because port `3000` was already occupied by another local process.
+
+**Validation results:**
+- `curl http://localhost:3000/api/v1/health`: PASS
+- `curl http://localhost:3001/api/v1/health`: PASS
+- Browser check `/login` shows "Sign in with GitHub": PASS
+- Browser check button click redirects to GitHub OAuth login: PASS
+- Browser check `/dashboard` without session redirects to `/login`: PASS
+- `curl http://localhost:3001/api/trpc/users.me?input={}` without auth: PASS (returns `UNAUTHORIZED` as expected)
+
+**Issues found:**
+- End-to-end OAuth approval/callback completion and authenticated `users.me` payload validation still require human confirmation with a real GitHub login session.
+
+**Next session:**
+Milestone 4 — confirm post-OAuth dashboard greeting and authenticated `users.me` response, then mark Milestone 4 complete

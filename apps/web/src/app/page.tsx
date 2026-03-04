@@ -1,26 +1,19 @@
 export default function HomePage() {
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "grid",
-        placeItems: "center",
-        padding: "2rem",
-        fontFamily: "ui-sans-serif, system-ui, sans-serif",
-        background: "linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)"
-      }}
-    >
-      <section style={{ maxWidth: 720, textAlign: "center" }}>
-        <p style={{ margin: 0, fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase" }}>
-          Agentura
-        </p>
-        <h1 style={{ margin: "0.75rem 0", fontSize: "clamp(2rem, 5vw, 3.5rem)" }}>
-          AI agent eval CI/CD for regression-safe shipping.
-        </h1>
-        <p style={{ margin: 0, color: "#334155", lineHeight: 1.6 }}>
-          Monorepo scaffold is live. Milestone 1 starts here.
-        </p>
-      </section>
+    <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center gap-3 px-6 text-center">
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+        Agentura
+      </p>
+      <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+        App is running
+      </h1>
+      <p className="text-slate-600">
+        Milestone 4 foundation is live. Continue at{" "}
+        <a className="font-medium text-slate-900 underline" href="/login">
+          /login
+        </a>
+        .
+      </p>
     </main>
   );
 }

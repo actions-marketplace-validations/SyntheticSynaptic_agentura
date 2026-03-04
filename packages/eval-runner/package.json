@@ -5,8 +5,9 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "type-check": "tsc --noEmit -p tsconfig.json"
+    "build": "pnpm --dir ../types run build && tsc -p tsconfig.json",
+    "type-check": "pnpm --dir ../types run build && tsc --noEmit -p tsconfig.json",
+    "test": "pnpm run build && node --test $(find dist -name '*.test.js')"
   },
   "dependencies": {
     "@agentura/types": "workspace:*"

@@ -104,8 +104,8 @@ agentura/
 | Milestone | Status | Completed |
 |---|---|---|
 | 1 — Monorepo scaffold | ✅ Complete | 2026-02-26 |
-| 2 — Database schema | ⬜ Not started | — |
-| 3 — Shared types + eval-runner package | ⬜ Not started | — |
+| 2 — Database schema | ✅ Complete | 2026-03-02 |
+| 3 — Shared types + eval-runner package | ✅ Complete | 2026-03-02 |
 | 4 — Next.js base + tRPC + GitHub OAuth | ⬜ Not started | — |
 | 5 — GitHub App — installation + webhook | ⬜ Not started | — |
 | 6 — Eval worker — golden dataset strategy | ⬜ Not started | — |
@@ -393,11 +393,11 @@ pnpm run type-check
 ```
 
 **Acceptance criteria:**
-- [ ] `scoreExactMatch("hello", "hello")` returns 1
-- [ ] `scoreExactMatch("hello", "world")` returns 0
-- [ ] `runGoldenDataset` with 3 mock cases returns correct SuiteRunResult shape
-- [ ] HTTP agent caller handles timeout gracefully (returns errorMessage, not crash)
-- [ ] All types importable from `@agentura/types`
+- [x] `scoreExactMatch("hello", "hello")` returns 1
+- [x] `scoreExactMatch("hello", "world")` returns 0
+- [x] `runGoldenDataset` with 3 mock cases returns correct SuiteRunResult shape
+- [x] HTTP agent caller handles timeout gracefully (returns errorMessage, not crash)
+- [x] All types importable from `@agentura/types`
 
 ---
 
