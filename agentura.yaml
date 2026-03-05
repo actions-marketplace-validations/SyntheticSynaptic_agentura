@@ -18,6 +18,12 @@ evals:
     dataset: ./evals/accuracy.jsonl
     threshold: 0.7
 
+  - name: speed
+    type: performance
+    dataset: ./evals/accuracy.jsonl
+    latency_threshold_ms: 5000
+    threshold: 0.8
+    
 ci:
   block_on_regression: false
   regression_threshold: 0.05
