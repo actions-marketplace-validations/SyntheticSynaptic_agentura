@@ -971,3 +971,27 @@ Milestone 13 — complete Vercel/Railway dashboard configuration and run product
 
 **Next session:**
 Milestone 13 — verify Vercel deploy now resolves `@agentura/db` and complete production smoke test checklist
+
+## Session — 2026-03-05 10:22 UTC
+
+**Milestone:** 13 — Production Deployment
+**Status:** IN PROGRESS
+
+**Files created:**
+- `.dockerignore` — added Docker context exclusions for faster/leaner cloud builds
+
+**Files modified:**
+- `Dockerfile` — added explicit monorepo workspace build order (`@agentura/db`, `@agentura/eval-runner`, `@agentura/types`, then `@agentura/worker`) for Railway/Render reliability
+- `docs/Documentation.md` — appended this deployment build-fix handoff
+
+**Decisions made:**
+- Build shared workspace dependencies before worker in container image to avoid transitive compile failures during cloud Docker builds.
+
+**Validation results:**
+- `pnpm --filter @agentura/worker build`: PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Milestone 13 — rerun Railway deploy and verify worker startup log in production

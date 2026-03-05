@@ -3,6 +3,9 @@ WORKDIR /app
 RUN npm install -g pnpm
 COPY . .
 RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @agentura/db build
+RUN pnpm --filter @agentura/eval-runner build
+RUN pnpm --filter @agentura/types build
 RUN pnpm --filter @agentura/worker build
 ENV NODE_ENV=production
 CMD ["node", "apps/worker/dist/index.js"]
