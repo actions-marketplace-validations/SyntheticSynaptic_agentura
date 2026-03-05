@@ -28,5 +28,5 @@ ci:
   block_on_regression: false
   regression_threshold: 0.05
   compare_to: main
-  post_comment: false
+  post_comment: true
   fail_on_new_suite: false
