@@ -7,10 +7,10 @@
 
 ## Current Status
 
-**Active milestone:** 12 — CLI: login + sync
-**Progress:** 11 / 17 milestones complete
-**Last updated:** Milestone 12 CLI implementation in progress (login/init/run command scaffolding complete)
-**Next action:** Run human manual E2E checks for CLI init/run/login behavior and finalize Milestone 12
+**Active milestone:** 13 — Dashboard: project list + run history
+**Progress:** 12 / 17 milestones complete
+**Last updated:** Milestone 12 completed with manual end-to-end validation passing
+**Next action:** Begin Milestone 13 polish/completion tasks and close remaining MVP dashboard gaps
 
 ---
 
@@ -58,7 +58,7 @@ cd packages/cli && npx tsx src/index.ts run
 | 9 | PR comment + Check Run | ✅ Complete | Worker posts/upserts PR comment via marker and updates same comment on subsequent pushes |
 | 10 | Baseline comparison + regression | ✅ Complete | Baseline comparison runs on PR evals, regressions/improvements are surfaced in PR comments, and check run conclusion honors `block_on_regression` |
 | 11 | Web dashboard: project + run views | ✅ Complete | `/dashboard`, project detail, and run detail pages validated end-to-end with expandable suite case rows and compact sparkline trend |
-| 12 | CLI: login + sync | 🟨 In progress | CLI now has `login`, `init`, and `run` command implementations with local config + YAML/dataset loading; pending human E2E confirmation |
+| 12 | CLI: login + sync | ✅ Complete | `agentura login`, `agentura init`, and `agentura run` implemented with local config storage, YAML/dataset loading, colored output, and validated exit-code behavior |
 | 13 | Dashboard: project list + run history | ⬜ Not started | — |
 | 14 | Dashboard: trend chart + run detail | ⬜ Not started | — |
 | 15 | Email notifications | ⬜ Not started | — |
@@ -299,6 +299,38 @@ Milestone 12 — implement CLI login + sync flow with authenticated local-to-clo
 
 **Next session:**
 Milestone 12 — complete human manual E2E checklist and finalize docs with COMPLETE status if all checks pass.
+
+---
+
+## Session — 2026-03-05 06:45 UTC
+
+**Milestone:** 12 — CLI: login + sync
+**Status:** COMPLETE
+
+**Files created:**
+- None
+
+**Files modified:**
+- `docs/Documentation.md` — marked Milestone 12 complete, updated current status, milestone table, and appended this completion handoff
+
+**Decisions made:**
+- Milestone 12 was closed based on human manual E2E validation confirming `init`/`run` behavior and expected exit codes.
+
+**Validation results:**
+- `pnpm run type-check`: PASS
+- `pnpm run build`: PASS
+- Manual E2E validation for Milestone 12: PASS
+  - `agentura init` creates `agentura.yaml` with correct defaults
+  - `agentura init` creates `evals/accuracy.jsonl`
+  - `agentura run` shows colored suite summary table
+  - `agentura run` exits 0 on success
+  - `agentura run` exits 1 on invalid config
+
+**Issues found:**
+- None
+
+**Next session:**
+Milestone 13 — continue dashboard milestone closure and remaining MVP stabilization tasks.
 
 ---
 
