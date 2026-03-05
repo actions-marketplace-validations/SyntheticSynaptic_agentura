@@ -12,6 +12,12 @@ evals:
     scorer: exact_match
     threshold: 0.5
 
+  - name: quality
+    type: llm_judge
+    rubric: ./evals/quality-rubric.md
+    dataset: ./evals/accuracy.jsonl
+    threshold: 0.7
+
 ci:
   block_on_regression: false
   regression_threshold: 0.05
