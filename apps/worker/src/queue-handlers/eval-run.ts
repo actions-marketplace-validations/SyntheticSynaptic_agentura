@@ -4,6 +4,7 @@ import {
   callHttpAgent,
   runGoldenDataset,
   runLlmJudge,
+  runPerformance,
 } from "@agentura/eval-runner";
 import type {
   AgentConfig,
@@ -206,6 +207,22 @@ function formatError(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown worker error";
 }
 
+function getSuiteMetadata(suiteResult: SuiteRunResult): string | null {
+  const value = (suiteResult as SuiteRunResult & { metadata?: unknown }).metadata;
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function getLatencyThresholdMs(suite: EvalSuiteConfig): number | null {
+  const value = (suite as EvalSuiteConfig & { latency_threshold_ms?: number })
+    .latency_threshold_ms;
+
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  return value;
+}
+
 export async function handleEvalRunJob(job: Job<EvalRunJobPayload>): Promise<void> {
   let evalRunId: string | null = null;
   let githubCheckRunId: bigint | null =
@@ -292,8 +309,12 @@ export async function handleEvalRunJob(job: Job<EvalRunJobPayload>): Promise<voi
 
     const goldenSuites = config.evals.filter((suite) => suite.type === "golden_dataset");
     const llmJudgeSuites = config.evals.filter((suite) => suite.type === "llm_judge");
+    const performanceSuites = config.evals.filter((suite) => suite.type === "performance");
     const unsupportedSuites = config.evals.filter(
-      (suite) => suite.type !== "golden_dataset" && suite.type !== "llm_judge"
+      (suite) =>
+        suite.type !== "golden_dataset" &&
+        suite.type !== "llm_judge" &&
+        suite.type !== "performance"
     );
 
     for (const suite of goldenSuites) {
@@ -334,12 +355,39 @@ export async function handleEvalRunJob(job: Job<EvalRunJobPayload>): Promise<voi
       suiteResults.push(suiteResult);
     }
 
+    for (const suite of performanceSuites) {
+      const latencyThresholdMs = getLatencyThresholdMs(suite);
+      if (!latencyThresholdMs) {
+        console.log(
+          `Skipping performance suite ${suite.name}: latency_threshold_ms missing or invalid`
+        );
+        continue;
+      }
+
+      console.log(`Running performance suite: ${suite.name}`);
+
+      const datasetPath = normalizeRepoPath(suite.dataset);
+      const cases = await fetchDatasetFile(octokit, owner, repo, branch, datasetPath);
+
+      const suiteResult = await runPerformance(
+        {
+          suiteName: suite.name,
+          agentFn,
+          latencyThresholdMs,
+        },
+        cases,
+        suite.threshold
+      );
+
+      suiteResults.push(suiteResult);
+    }
+
     for (const suite of unsupportedSuites) {
       console.log(`skipping ${suite.name}: strategy not yet implemented`);
     }
 
     if (suiteResults.length === 0) {
-      console.warn(`[worker] no golden_dataset suites found for ${owner}/${repo}`);
+      console.warn(`[worker] no runnable eval suites found for ${owner}/${repo}`);
     }
 
     const overallPassed = suiteResults.every((suite) => suite.passed);
@@ -383,6 +431,22 @@ export async function handleEvalRunJob(job: Job<EvalRunJobPayload>): Promise<voi
             id: true,
           },
         });
+
+        const suiteMetadata = getSuiteMetadata(suiteResult);
+        if (suiteMetadata) {
+          try {
+            await transaction.$executeRaw`
+              UPDATE "SuiteResult"
+              SET "metadata" = ${suiteMetadata}::jsonb
+              WHERE "id" = ${createdSuite.id}
+            `;
+          } catch (metadataError) {
+            console.warn(
+              `[worker] unable to persist metadata for suite ${suiteResult.suiteName}:`,
+              metadataError
+            );
+          }
+        }
 
         if (suiteResult.cases.length > 0) {
           await transaction.caseResult.createMany({

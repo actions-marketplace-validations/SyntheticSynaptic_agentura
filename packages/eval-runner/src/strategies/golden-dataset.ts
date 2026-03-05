@@ -3,6 +3,7 @@ import { performance } from "node:perf_hooks";
 import type { AgentFunction, EvalCase, EvalCaseResult, SuiteRunResult } from "@agentura/types";
 import { scoreContains } from "../scorers/contains";
 import { scoreExactMatch } from "../scorers/exact-match";
+import { scoreSemanticSimilarity } from "../scorers/semantic-similarity";
 
 export type GoldenDatasetScorer =
   | "exact_match"
@@ -13,10 +14,6 @@ export type GoldenDatasetScorer =
 export interface GoldenDatasetOptions {
   suiteName?: string;
   threshold?: number;
-  semanticSimilarityScorer?: (
-    output: string,
-    expected: string
-  ) => number | Promise<number>;
 }
 
 function clampScore(score: number): number {
@@ -44,11 +41,7 @@ async function scoreCase(
     return scoreContains(output, expected);
   }
 
-  if (!options.semanticSimilarityScorer) {
-    return 0;
-  }
-
-  return options.semanticSimilarityScorer(output, expected);
+  return scoreSemanticSimilarity(output, expected);
 }
 
 export async function runGoldenDataset(

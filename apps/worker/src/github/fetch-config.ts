@@ -89,8 +89,7 @@ const llmJudgeSuiteSchema = evalSuiteBaseSchema.extend({
 
 const performanceSuiteSchema = evalSuiteBaseSchema.extend({
   type: z.literal("performance"),
-  max_p95_ms: z.number().int().positive().optional(),
-  max_cost_per_call_usd: z.number().positive().optional(),
+  latency_threshold_ms: z.number().int().positive(),
 });
 
 const evalSuiteSchema = z.discriminatedUnion("type", [

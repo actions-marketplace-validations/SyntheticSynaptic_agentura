@@ -2,133 +2,163 @@ import { performance } from "node:perf_hooks";
 
 import type { AgentFunction, EvalCase, EvalCaseResult, SuiteRunResult } from "@agentura/types";
 
-export interface PerformanceOptions {
-  suiteName?: string;
-  threshold?: number;
-  maxP95Ms: number;
-  maxCostPerCallUsd: number;
-  inputCostPer1MTokensUsd?: number;
-  outputCostPer1MTokensUsd?: number;
+export interface PerformanceRunConfig {
+  suiteName: string;
+  agentFn: AgentFunction;
+  latencyThresholdMs: number;
 }
 
-function clampScore(score: number): number {
-  if (!Number.isFinite(score)) {
+interface PerformanceCaseExecution {
+  caseResult: EvalCaseResult;
+  latencyMs: number;
+  estimatedCostUsd: number;
+}
+
+type SuiteRunResultWithMetadata = SuiteRunResult & { metadata: string };
+
+const CASE_CONCURRENCY = 10;
+
+async function createLimiter(concurrency: number) {
+  const importer = Function(
+    "specifier",
+    "return import(specifier)"
+  ) as (specifier: string) => Promise<{ default: (value: number) => <T>(task: () => Promise<T>) => Promise<T> }>;
+  const module = await importer("p-limit");
+  return module.default(concurrency);
+}
+
+function normalizeThreshold(value: number): number {
+  if (!Number.isFinite(value)) {
     return 0;
   }
-  return Math.max(0, Math.min(1, score));
+
+  return Math.max(0, Math.min(1, value));
 }
 
-function percentile(values: number[], percentileValue: number): number {
+function readEstimatedCostUsd(value: unknown): number {
+  if (!value || typeof value !== "object") {
+    return 0;
+  }
+
+  const record = value as Record<string, unknown>;
+  const rawCost = record.estimatedCostUsd ?? record.costUsd;
+  if (typeof rawCost !== "number" || !Number.isFinite(rawCost) || rawCost < 0) {
+    return 0;
+  }
+
+  return rawCost;
+}
+
+function average(values: number[]): number {
   if (values.length === 0) {
     return 0;
   }
 
-  const sorted = [...values].sort((a, b) => a - b);
-  const index = Math.max(
-    0,
-    Math.min(sorted.length - 1, Math.ceil((percentileValue / 100) * sorted.length) - 1)
-  );
-  return sorted[index];
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-function costForCase(
-  inputTokens: number | undefined,
-  outputTokens: number | undefined,
-  options: PerformanceOptions
-): number {
-  const inputRate = options.inputCostPer1MTokensUsd ?? 0;
-  const outputRate = options.outputCostPer1MTokensUsd ?? 0;
-  const input = inputTokens ?? 0;
-  const output = outputTokens ?? 0;
+export function percentile(sortedValues: number[], p: number): number {
+  if (sortedValues.length === 0) {
+    return 0;
+  }
 
-  return (input * inputRate + output * outputRate) / 1_000_000;
+  const index = Math.ceil((p / 100) * sortedValues.length) - 1;
+  return sortedValues[Math.max(0, Math.min(sortedValues.length - 1, index))];
 }
 
 export async function runPerformance(
+  config: PerformanceRunConfig,
   cases: EvalCase[],
-  agentFn: AgentFunction,
-  options: PerformanceOptions
+  threshold: number
 ): Promise<SuiteRunResult> {
   const startedAt = performance.now();
-  const suiteName = options.suiteName ?? "performance";
-  const threshold = options.threshold ?? 0;
+  const normalizedThreshold = normalizeThreshold(threshold);
+  const limit = await createLimiter(CASE_CONCURRENCY);
 
-  const caseResults: EvalCaseResult[] = [];
-  const latencies: number[] = [];
-  const costs: number[] = [];
+  const caseExecutions = await Promise.all(
+    cases.map((testCase, index) =>
+      limit(async (): Promise<PerformanceCaseExecution> => {
+        const caseStartedAt = performance.now();
 
-  for (let i = 0; i < cases.length; i += 1) {
-    const current = cases[i];
+        try {
+          const agentResult = await config.agentFn(testCase.input);
+          const latencyMs = Math.max(0, Math.round(performance.now() - caseStartedAt));
+          const score = latencyMs <= config.latencyThresholdMs ? 1 : 0;
 
-    try {
-      const agentResult = await agentFn(current.input);
-      const estimatedCostUsd = costForCase(
-        agentResult.inputTokens,
-        agentResult.outputTokens,
-        options
-      );
-      const casePassed =
-        agentResult.latencyMs <= options.maxP95Ms &&
-        estimatedCostUsd <= options.maxCostPerCallUsd;
+          return {
+            caseResult: {
+              caseIndex: index,
+              input: testCase.input,
+              output: agentResult.output,
+              expected: testCase.expected,
+              score,
+              passed: score >= 1,
+              latencyMs,
+              inputTokens: agentResult.inputTokens,
+              outputTokens: agentResult.outputTokens,
+            },
+            latencyMs,
+            estimatedCostUsd: readEstimatedCostUsd(agentResult),
+          };
+        } catch (error) {
+          return {
+            caseResult: {
+              caseIndex: index,
+              input: testCase.input,
+              output: null,
+              expected: testCase.expected,
+              score: 0,
+              passed: false,
+              latencyMs: Math.max(0, Math.round(performance.now() - caseStartedAt)),
+              errorMessage: error instanceof Error ? error.message : "Unknown performance error",
+            },
+            latencyMs: Math.max(0, Math.round(performance.now() - caseStartedAt)),
+            estimatedCostUsd: 0,
+          };
+        }
+      })
+    )
+  );
 
-      latencies.push(agentResult.latencyMs);
-      costs.push(estimatedCostUsd);
+  const orderedExecutions = caseExecutions.sort(
+    (left, right) => left.caseResult.caseIndex - right.caseResult.caseIndex
+  );
+  const caseResults = orderedExecutions.map((execution) => execution.caseResult);
+  const latencies = orderedExecutions.map((execution) => execution.latencyMs);
+  const costs = orderedExecutions.map((execution) => execution.estimatedCostUsd);
+  const sortedLatencies = [...latencies].sort((left, right) => left - right);
 
-      caseResults.push({
-        caseIndex: i,
-        input: current.input,
-        output: agentResult.output,
-        expected: current.expected,
-        score: casePassed ? 1 : 0,
-        passed: casePassed,
-        latencyMs: agentResult.latencyMs,
-        inputTokens: agentResult.inputTokens,
-        outputTokens: agentResult.outputTokens,
-      });
-    } catch (error) {
-      caseResults.push({
-        caseIndex: i,
-        input: current.input,
-        output: null,
-        expected: current.expected,
-        score: 0,
-        passed: false,
-        latencyMs: 0,
-        errorMessage: error instanceof Error ? error.message : "Unknown performance error",
-      });
-      latencies.push(options.maxP95Ms * 2);
-      costs.push(options.maxCostPerCallUsd * 2);
-    }
-  }
-
-  const p95 = percentile(latencies, 95);
-  const avgCost = costs.length === 0 ? 0 : costs.reduce((total, value) => total + value, 0) / costs.length;
-
-  const latencyScore =
-    options.maxP95Ms <= 0 ? 0 : clampScore(1 - Math.max(0, p95 - options.maxP95Ms) / options.maxP95Ms);
-  const costScore =
-    options.maxCostPerCallUsd <= 0
-      ? 0
-      : clampScore(
-          1 -
-            Math.max(0, avgCost - options.maxCostPerCallUsd) /
-              options.maxCostPerCallUsd
-        );
-
-  const score = clampScore(Math.min(latencyScore, costScore));
   const totalCases = caseResults.length;
   const passedCases = caseResults.filter((result) => result.passed).length;
+  const score = totalCases === 0 ? 0 : passedCases / totalCases;
 
-  return {
-    suiteName,
+  const p50 = percentile(sortedLatencies, 50);
+  const p95 = percentile(sortedLatencies, 95);
+  const p99 = percentile(sortedLatencies, 99);
+  const meanLatencyMs = average(latencies);
+  const minLatencyMs = sortedLatencies[0] ?? 0;
+  const maxLatencyMs = sortedLatencies[sortedLatencies.length - 1] ?? 0;
+
+  const result: SuiteRunResultWithMetadata = {
+    suiteName: config.suiteName,
     strategy: "performance",
     score,
-    threshold,
-    passed: score >= threshold,
+    threshold: normalizedThreshold,
+    passed: score >= normalizedThreshold,
     totalCases,
     passedCases,
     durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
-    estimatedCostUsd: costs.reduce((total, value) => total + value, 0),
+    estimatedCostUsd: costs.reduce((sum, value) => sum + value, 0),
+    metadata: JSON.stringify({
+      p50,
+      p95,
+      p99,
+      meanLatencyMs,
+      maxLatencyMs,
+      minLatencyMs,
+    }),
     cases: caseResults,
   };
+
+  return result;
 }
