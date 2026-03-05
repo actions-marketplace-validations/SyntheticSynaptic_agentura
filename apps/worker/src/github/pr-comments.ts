@@ -27,27 +27,25 @@ interface PerformanceMetadata {
 }
 
 export interface PrCommentsOctokitLike {
-  rest: {
-    issues: {
-      listComments(params: {
-        owner: string;
-        repo: string;
-        issue_number: number;
-        per_page?: number;
-      }): Promise<{ data: IssueComment[] }>;
-      updateComment(params: {
-        owner: string;
-        repo: string;
-        comment_id: number;
-        body: string;
-      }): Promise<unknown>;
-      createComment(params: {
-        owner: string;
-        repo: string;
-        issue_number: number;
-        body: string;
-      }): Promise<unknown>;
-    };
+  issues: {
+    listComments(params: {
+      owner: string;
+      repo: string;
+      issue_number: number;
+      per_page?: number;
+    }): Promise<{ data: IssueComment[] }>;
+    updateComment(params: {
+      owner: string;
+      repo: string;
+      comment_id: number;
+      body: string;
+    }): Promise<unknown>;
+    createComment(params: {
+      owner: string;
+      repo: string;
+      issue_number: number;
+      body: string;
+    }): Promise<unknown>;
   };
 }
 
@@ -154,7 +152,7 @@ export async function upsertPrComment(
   prNumber: number,
   body: string
 ): Promise<void> {
-  const commentsResponse = await octokit.rest.issues.listComments({
+  const commentsResponse = await octokit.issues.listComments({
     owner,
     repo,
     issue_number: prNumber,
@@ -166,7 +164,7 @@ export async function upsertPrComment(
   );
 
   if (existingComment) {
-    await octokit.rest.issues.updateComment({
+    await octokit.issues.updateComment({
       owner,
       repo,
       comment_id: existingComment.id,
@@ -175,7 +173,7 @@ export async function upsertPrComment(
     return;
   }
 
-  await octokit.rest.issues.createComment({
+  await octokit.issues.createComment({
     owner,
     repo,
     issue_number: prNumber,
