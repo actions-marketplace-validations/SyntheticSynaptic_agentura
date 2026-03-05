@@ -8,84 +8,80 @@ interface TrendChartProps {
 }
 
 interface Point {
-  x: number;
-  y: number;
-  passed: boolean;
   createdAt: string;
-  passRate: number;
+  cx: number;
+  cy: number;
+  passed: boolean;
 }
 
+const CHART_HEIGHT = 60;
+const DOT_RADIUS = 3;
+const STROKE_WIDTH = 1.5;
+const width = 800;
+
 function buildPoints(runs: TrendChartRun[]): Point[] {
-  const chronologicalRuns = [...runs].sort(
+  const orderedRuns = [...runs].sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
   );
 
-  let passedCount = 0;
-  const width = 100;
-  const minY = 10;
-  const maxY = 70;
-  const step = chronologicalRuns.length > 1 ? width / (chronologicalRuns.length - 1) : 0;
+  if (orderedRuns.length === 1) {
+    return [
+      {
+        createdAt: orderedRuns[0].createdAt,
+        cx: width / 2,
+        cy: orderedRuns[0].overallPassed ? 10 : 50,
+        passed: orderedRuns[0].overallPassed,
+      },
+    ];
+  }
 
-  return chronologicalRuns.map((run, index) => {
-    if (run.overallPassed) {
-      passedCount += 1;
-    }
-
-    const passRate = (passedCount / (index + 1)) * 100;
-    const y = maxY - ((maxY - minY) * passRate) / 100;
-
-    return {
-      x: step * index,
-      y,
-      passed: run.overallPassed,
-      createdAt: run.createdAt,
-      passRate,
-    };
-  });
+  return orderedRuns.map((run, index) => ({
+    createdAt: run.createdAt,
+    cx: (index / (orderedRuns.length - 1)) * width,
+    cy: run.overallPassed ? 10 : 50,
+    passed: run.overallPassed,
+  }));
 }
 
 export function TrendChart({ runs }: TrendChartProps) {
   if (runs.length < 2) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">
-        Not enough data
+      <div style={{ width: "100%", height: "60px", overflow: "hidden" }}>
+        <div className="flex h-full items-center justify-center rounded-lg border border-slate-200 bg-white text-sm text-slate-500">
+          Not enough data
+        </div>
       </div>
     );
   }
 
   const points = buildPoints(runs);
-  const linePath = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  const polylinePoints = points.map((point) => `${point.cx},${point.cy}`).join(" ");
 
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white p-4">
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-800">Pass rate trend (last 20 runs)</h3>
-        <p className="text-xs text-slate-500">0–100%</p>
-      </div>
-      <div className="overflow-hidden">
-        <svg
-          viewBox="0 0 100 80"
-          className="h-[60px] w-full"
-          preserveAspectRatio="none"
-          role="img"
-          aria-label="Pass rate trend chart"
-        >
-          <line x1="0" y1="70" x2="100" y2="70" stroke="rgb(226 232 240)" strokeWidth="0.6" />
-          <line x1="0" y1="10" x2="100" y2="10" stroke="rgb(226 232 240)" strokeWidth="0.6" />
-          <path d={linePath} fill="none" stroke="rgb(51 65 85)" strokeWidth="1.5" />
-          {points.map((point, index) => (
-            <circle
-              key={`${point.createdAt}-${index}`}
-              cx={point.x}
-              cy={point.y}
-              r="4"
-              fill={point.passed ? "rgb(22 163 74)" : "rgb(220 38 38)"}
-            >
-              <title>{`${new Date(point.createdAt).toLocaleDateString()}: ${point.passRate.toFixed(0)}%`}</title>
-            </circle>
-          ))}
-        </svg>
-      </div>
+    <div style={{ width: "100%", height: "60px", overflow: "hidden" }}>
+      <svg
+        viewBox={`0 0 ${width} ${CHART_HEIGHT}`}
+        height={CHART_HEIGHT}
+        width="100%"
+        preserveAspectRatio="none"
+        style={{ display: "block" }}
+      >
+        <polyline
+          points={polylinePoints}
+          fill="none"
+          stroke="rgb(51 65 85)"
+          strokeWidth={STROKE_WIDTH}
+        />
+        {points.map((point, index) => (
+          <circle
+            key={`${point.createdAt}-${index}`}
+            cx={point.cx}
+            cy={point.cy}
+            r={DOT_RADIUS}
+            fill={point.passed ? "rgb(22 163 74)" : "rgb(220 38 38)"}
+          />
+        ))}
+      </svg>
     </div>
   );
 }
