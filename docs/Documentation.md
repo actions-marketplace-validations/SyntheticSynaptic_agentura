@@ -7,10 +7,10 @@
 
 ## Current Status
 
-**Active milestone:** 8 — Eval worker: performance + embeddings
-**Progress:** 7 / 17 milestones complete
-**Last updated:** Milestone 7 completed with manual end-to-end validation passing
-**Next action:** Implement Milestone 8 performance strategy and semantic similarity with embedding cache
+**Active milestone:** 9 — PR comment + Check Run
+**Progress:** 8 / 17 milestones complete
+**Last updated:** Milestone 8 completed with manual end-to-end validation passing
+**Next action:** Implement Milestone 9 PR comment posting and GitHub Check Run summary details
 
 ---
 
@@ -54,7 +54,7 @@ cd packages/cli && npx tsx src/index.ts run
 | 5 | GitHub App: install + webhook | ✅ Complete | Webhook signature verification, installation/project sync, and eval-run enqueue validated end-to-end |
 | 6 | Eval worker: golden dataset | ✅ Complete | Worker processes eval-run jobs end-to-end for golden_dataset, persists results, and updates GitHub Check Runs |
 | 7 | Eval worker: LLM judge | ✅ Complete | Groq-backed llm_judge suite execution works end-to-end with persisted judge reasoning and PR check updates |
-| 8 | Eval worker: performance + embeddings | ⬜ Not started | — |
+| 8 | Eval worker: performance + embeddings | ✅ Complete | Performance suites run end-to-end with latency percentile metadata persisted to SuiteResult and GitHub Check Run updates |
 | 9 | PR comment + Check Run | ⬜ Not started | — |
 | 10 | Baseline comparison + regression | ⬜ Not started | — |
 | 11 | CLI: init + run | ⬜ Not started | — |
@@ -648,3 +648,31 @@ Milestone 7 — run manual end-to-end llm_judge validation with a real `GROQ_API
 
 **Next session:**
 Milestone 8 — implement performance strategy and semantic similarity with embedding cache, then validate cache-hit behavior and latency metric persistence
+
+## Session — 2026-03-05 02:46 UTC
+
+**Milestone:** 8 — Eval worker: performance + embeddings
+**Status:** COMPLETE
+
+**Files created:**
+- `packages/db/prisma/migrations/20260305023322_add_suite_result_metadata/migration.sql` — Prisma migration to add nullable `metadata` column on `SuiteResult`
+
+**Files modified:**
+- `packages/db/prisma/schema.prisma` — added `SuiteResult.metadata` as optional `String?`
+- `docs/Documentation.md` — updated current status, milestone table, and appended this completion entry
+
+**Decisions made:**
+- Persist suite-level latency aggregates (`p50`, `p95`, `p99`, `meanLatencyMs`, `maxLatencyMs`, `minLatencyMs`) in `SuiteResult.metadata` as JSON text for Milestone 8 without additional schema refactors.
+
+**Validation results:**
+- `pnpm run type-check`: PASS
+- Manual validation: performance suite ran successfully: PASS
+- Manual validation: `SuiteResult` row in Supabase for `speed` suite: PASS
+- Manual validation: metadata includes latency percentiles (`p50`/`p95`/`p99`): PASS
+- Manual validation: GitHub Check Run appears on PR: PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Milestone 9 — implement PR comment posting and finalize Check Run output formatting/details
