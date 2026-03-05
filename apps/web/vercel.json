@@ -1,6 +1,6 @@
 {
   "framework": "nextjs",
   "installCommand": "cd ../.. && pnpm install",
-  "buildCommand": "cd ../.. && pnpm --filter @agentura/web build",
-  "outputDirectory": "apps/web/.next"
+  "buildCommand": "cd ../.. && pnpm --filter @agentura/db exec prisma generate && pnpm --filter @agentura/web build",
+  "outputDirectory": ".next"
 }

@@ -920,3 +920,28 @@ Milestone 13 — execute browser dashboard deployment steps (Vercel + Railway + 
 
 **Next session:**
 Milestone 13 — execute production deployments and smoke-test webhook, worker processing, and PR feedback
+
+## Session — 2026-03-05 09:40 UTC
+
+**Milestone:** 13 — Production Deployment
+**Status:** IN PROGRESS
+
+**Files created:**
+- None
+
+**Files modified:**
+- `apps/web/vercel.json` — updated build command to run Prisma client generation before web build and fixed output directory to `.next`
+- `packages/db/package.json` — added `generate` script (`prisma generate`) for deployment/build compatibility
+- `docs/Documentation.md` — appended this session handoff
+
+**Decisions made:**
+- Vercel build now explicitly generates Prisma client from `@agentura/db` before `@agentura/web` build to avoid workspace resolution failures in cloud builds.
+
+**Validation results:**
+- `pnpm run build`: PASS (build succeeds; non-blocking local DNS warnings for unavailable Upstash host in this environment)
+
+**Issues found:**
+- None blocking
+
+**Next session:**
+Milestone 13 — complete Vercel/Railway dashboard configuration and run production end-to-end smoke test
