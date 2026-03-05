@@ -945,3 +945,29 @@ Milestone 13 — execute production deployments and smoke-test webhook, worker p
 
 **Next session:**
 Milestone 13 — complete Vercel/Railway dashboard configuration and run production end-to-end smoke test
+
+## Session — 2026-03-05 10:05 UTC
+
+**Milestone:** 13 — Production Deployment
+**Status:** IN PROGRESS
+
+**Files created:**
+- None
+
+**Files modified:**
+- `packages/db/package.json` — switched `build` to `prisma generate` with `postbuild` TypeScript emit, added explicit package `exports` for `dist` output
+- `packages/db/src/index.ts` — added `PrismaClient` and wildcard re-exports from `@prisma/client` while retaining shared singleton export
+- `apps/web/vercel.json` — updated Vercel build command to run `@agentura/db build` before `@agentura/web build`
+- `docs/Documentation.md` — appended this handoff
+
+**Decisions made:**
+- Keep `@agentura/db` as a compiled workspace package (`dist`) and make the build command generate Prisma client and emit package artifacts before web build.
+
+**Validation results:**
+- `pnpm run build`: PASS (includes successful `@agentura/db` build + Prisma generation; non-blocking local DNS warnings for unavailable Upstash hostname still appear in this environment)
+
+**Issues found:**
+- None blocking
+
+**Next session:**
+Milestone 13 — verify Vercel deploy now resolves `@agentura/db` and complete production smoke test checklist
