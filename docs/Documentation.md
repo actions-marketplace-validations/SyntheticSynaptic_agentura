@@ -896,3 +896,27 @@ Milestone 13 — execute production deployment checklist (Vercel + Railway + web
 
 **Next session:**
 Milestone 13 — execute browser dashboard deployment steps (Vercel + Railway + GitHub App/OAuth URL updates) and run production smoke test
+
+## Session — 2026-03-05 09:22 UTC
+
+**Milestone:** 13 — Production Deployment
+**Status:** IN PROGRESS
+
+**Files created:**
+- `render.yaml` — Render worker service manifest using the monorepo Dockerfile
+
+**Files modified:**
+- `Dockerfile` — set production runtime env and kept worker entrypoint compatible for Railway/Render
+- `railway.json` — normalized Dockerfile path format for monorepo root deployment
+
+**Decisions made:**
+- Use a single root Dockerfile for both Railway and Render to keep worker deployment behavior consistent across providers.
+
+**Validation results:**
+- Config update review: PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Milestone 13 — execute production deployments and smoke-test webhook, worker processing, and PR feedback
