@@ -55,8 +55,6 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
           <p className="mt-1 text-sm text-slate-600">Default branch: {project.defaultBranch}</p>
         </div>
 
-        <TrendChart runs={chartData} />
-
         <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
           <table className="min-w-full border-collapse text-left text-sm">
             <thead className="bg-slate-50">
@@ -106,6 +104,8 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
             </div>
           ) : null}
         </section>
+
+        <TrendChart runs={chartData} />
       </main>
     );
   } catch {
