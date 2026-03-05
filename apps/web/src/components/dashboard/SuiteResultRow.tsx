@@ -51,28 +51,33 @@ export function SuiteResultRow({ suite, cases }: SuiteResultRowProps) {
   return (
     <>
       <tr className="border-t border-slate-200">
-        <td className="px-4 py-3 align-top">
+        <td className="px-4 py-3 align-middle">
           <button
             type="button"
             onClick={() => setExpanded((value) => !value)}
-            className="text-left font-medium text-slate-900 hover:text-slate-700"
+            className="flex items-center gap-2 text-left font-medium text-slate-900 hover:text-slate-700"
           >
+            <span className="text-xs text-slate-500">{expanded ? "▾" : "▸"}</span>
             {suite.suiteName}
+            <span className="inline-flex rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+              {suite.passedCases}/{suite.totalCases}
+            </span>
           </button>
-          <p className="text-xs text-slate-500">
-            {suite.passedCases}/{suite.totalCases} cases passed
-          </p>
         </td>
-        <td className="px-4 py-3 align-top text-sm text-slate-700">{suite.strategy}</td>
-        <td className="px-4 py-3 align-top text-sm text-slate-700">{suite.score.toFixed(2)}</td>
-        <td className="px-4 py-3 align-top text-sm text-slate-700">{suite.threshold.toFixed(2)}</td>
-        <td className="px-4 py-3 align-top text-sm text-slate-700">
+        <td className="px-4 py-3 align-middle text-sm text-slate-700">{suite.strategy}</td>
+        <td className="px-4 py-3 text-right align-middle font-mono text-sm text-slate-700">
+          {suite.score.toFixed(2)}
+        </td>
+        <td className="px-4 py-3 text-right align-middle font-mono text-sm text-slate-700">
+          {suite.threshold.toFixed(2)}
+        </td>
+        <td className="px-4 py-3 text-right align-middle font-mono text-sm text-slate-700">
           {suite.baselineScore === null ? "—" : suite.baselineScore.toFixed(2)}
         </td>
-        <td className="px-4 py-3 align-top text-sm text-slate-700">
+        <td className="px-4 py-3 text-right align-middle font-mono text-sm text-slate-700">
           {delta === null ? "—" : `${delta > 0 ? "+" : ""}${delta.toFixed(2)}`}
         </td>
-        <td className="px-4 py-3 align-top">
+        <td className="px-4 py-3 align-middle">
           <StatusBadge status="completed" passed={suite.passed} />
         </td>
       </tr>

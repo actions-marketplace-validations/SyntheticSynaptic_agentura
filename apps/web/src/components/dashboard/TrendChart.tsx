@@ -62,7 +62,13 @@ export function TrendChart({ runs }: TrendChartProps) {
         <h3 className="text-sm font-semibold text-slate-800">Pass rate trend (last 20 runs)</h3>
         <p className="text-xs text-slate-500">0–100%</p>
       </div>
-      <svg viewBox="0 0 100 80" className="h-20 w-full" preserveAspectRatio="none" role="img" aria-label="Pass rate trend chart">
+      <svg
+        viewBox="0 0 100 80"
+        className="h-16 max-h-[120px] w-full"
+        preserveAspectRatio="none"
+        role="img"
+        aria-label="Pass rate trend chart"
+      >
         <line x1="0" y1="70" x2="100" y2="70" stroke="rgb(226 232 240)" strokeWidth="0.6" />
         <line x1="0" y1="10" x2="100" y2="10" stroke="rgb(226 232 240)" strokeWidth="0.6" />
         <path d={linePath} fill="none" stroke="rgb(51 65 85)" strokeWidth="1.2" />

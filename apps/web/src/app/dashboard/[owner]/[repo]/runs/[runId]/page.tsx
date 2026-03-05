@@ -106,43 +106,43 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
         </div>
 
         <section className="rounded-xl border border-slate-200 bg-white p-5">
-          <div className="grid gap-4 text-sm text-slate-700 md:grid-cols-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Branch</p>
-              <p className="mt-1 font-medium text-slate-900">{serializedRun.branch}</p>
+          <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <dt className="text-sm text-slate-500">Branch</dt>
+              <dd className="mt-1 font-medium text-slate-900">{serializedRun.branch}</dd>
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Status</p>
-              <div className="mt-1">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <dt className="text-sm text-slate-500">Status</dt>
+              <dd className="mt-1">
                 <StatusBadge status={serializedRun.status} passed={serializedRun.overallPassed} />
-              </div>
+              </dd>
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Date</p>
-              <div className="mt-1">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <dt className="text-sm text-slate-500">Date</dt>
+              <dd className="mt-1 text-slate-900">
                 <RelativeTime date={serializedRun.createdAt} />
-              </div>
+              </dd>
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Duration</p>
-              <p className="mt-1 font-medium text-slate-900">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <dt className="text-sm text-slate-500">Duration</dt>
+              <dd className="mt-1 font-medium text-slate-900">
                 {formatDuration(serializedRun.durationMs ?? null)}
-              </p>
+              </dd>
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Estimated Cost</p>
-              <p className="mt-1 font-medium text-slate-900">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <dt className="text-sm text-slate-500">Estimated Cost</dt>
+              <dd className="mt-1 font-medium text-slate-900">
                 {formatCost(serializedRun.estimatedCostUsd ?? null)}
-              </p>
+              </dd>
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Suites</p>
-              <p className="mt-1 font-medium text-slate-900">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <dt className="text-sm text-slate-500">Suites</dt>
+              <dd className="mt-1 font-medium text-slate-900">
                 {serializedRun.suiteResults.filter((suite) => suite.passed).length}/
                 {serializedRun.suiteResults.length} passed
-              </p>
+              </dd>
             </div>
-          </div>
+          </dl>
         </section>
 
         <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
