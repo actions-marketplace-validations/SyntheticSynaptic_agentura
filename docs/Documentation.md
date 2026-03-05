@@ -9,8 +9,8 @@
 
 **Active milestone:** 12 — CLI: login + sync
 **Progress:** 11 / 17 milestones complete
-**Last updated:** Milestone 11 completed with manual end-to-end validation passing
-**Next action:** Begin Milestone 12 implementation for CLI authentication and cloud sync flow
+**Last updated:** Milestone 12 CLI implementation in progress (login/init/run command scaffolding complete)
+**Next action:** Run human manual E2E checks for CLI init/run/login behavior and finalize Milestone 12
 
 ---
 
@@ -58,7 +58,7 @@ cd packages/cli && npx tsx src/index.ts run
 | 9 | PR comment + Check Run | ✅ Complete | Worker posts/upserts PR comment via marker and updates same comment on subsequent pushes |
 | 10 | Baseline comparison + regression | ✅ Complete | Baseline comparison runs on PR evals, regressions/improvements are surfaced in PR comments, and check run conclusion honors `block_on_regression` |
 | 11 | Web dashboard: project + run views | ✅ Complete | `/dashboard`, project detail, and run detail pages validated end-to-end with expandable suite case rows and compact sparkline trend |
-| 12 | CLI: login + sync | ⬜ Not started | — |
+| 12 | CLI: login + sync | 🟨 In progress | CLI now has `login`, `init`, and `run` command implementations with local config + YAML/dataset loading; pending human E2E confirmation |
 | 13 | Dashboard: project list + run history | ⬜ Not started | — |
 | 14 | Dashboard: trend chart + run detail | ⬜ Not started | — |
 | 15 | Email notifications | ⬜ Not started | — |
@@ -261,6 +261,44 @@ Milestone 11 — implement CLI `init` + `run` flow and validate local eval execu
 
 **Next session:**
 Milestone 12 — implement CLI login + sync flow with authenticated local-to-cloud run synchronization.
+
+---
+
+## Session — 2026-03-05 06:21 UTC
+
+**Milestone:** 12 — CLI: login + sync (init/run/login command implementation phase)
+**Status:** IN PROGRESS
+
+**Files created:**
+- `packages/cli/src/commands/init.ts` — interactive `agentura init` wizard with YAML + sample dataset generation
+- `packages/cli/src/commands/run.ts` — local eval execution command with config validation, strategy dispatch, colored summary output, and non-zero exit on failure
+- `packages/cli/src/commands/login.ts` — browser-assisted login flow storing API key in local config
+- `packages/cli/src/lib/config.ts` — local CLI config read/write helpers for `~/.agentura/config.json`
+- `packages/cli/src/lib/load-dataset.ts` — local JSONL dataset loader with validation and clear parse/file errors
+- `packages/cli/src/lib/load-rubric.ts` — local rubric file loader
+
+**Files modified:**
+- `packages/cli/src/index.ts` — wired `login`, `init`, `run` commands with commander
+- `packages/cli/package.json` — added approved CLI dependencies (`chalk`, `open`, `js-yaml`, `zod`, workspace eval/types)
+- `pnpm-lock.yaml` — lockfile updates for approved CLI dependency additions
+- `docs/Documentation.md` — updated current status + milestone table and appended this session
+
+**Decisions made:**
+- Used lazy dynamic imports for eval-runner strategy modules in `run.ts` so `init` and `login` do not crash due ESM/CJS boundary issues in unrelated llm-judge runtime code.
+
+**Validation results:**
+- `pnpm run type-check`: PASS
+- `pnpm run build`: PASS
+- `pnpm --filter agentura run build`: PASS
+- Local smoke (temp dir): `agentura init` creates `agentura.yaml` and `evals/accuracy.jsonl`: PASS
+- Local smoke (temp HOME): `agentura login` saves config JSON with `apiKey` and `baseUrl`: PASS
+- Local smoke (no agent on localhost:3001): `agentura run` exits 1 and prints failed summary: PASS
+
+**Issues found:**
+- Initial runtime crash when importing `@agentura/eval-runner` package root from CLI (`ERR_REQUIRE_ESM` via llm-judge `p-limit`) was resolved by strategy-level lazy imports.
+
+**Next session:**
+Milestone 12 — complete human manual E2E checklist and finalize docs with COMPLETE status if all checks pass.
 
 ---
 

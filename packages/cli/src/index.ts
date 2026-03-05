@@ -1,18 +1,36 @@
 #!/usr/bin/env node
+import chalk from "chalk";
 import { Command } from "commander";
+import { initCommand } from "./commands/init";
+import { loginCommand } from "./commands/login";
+import { runCommand } from "./commands/run";
 
 const program = new Command();
 
 program
   .name("agentura")
-  .description("Agentura CLI scaffold")
+  .description("Agentura CLI")
   .version("0.0.0");
 
 program
-  .command("run")
-  .description("Run eval suites (scaffold placeholder)")
-  .action(() => {
-    process.stdout.write("Agentura CLI scaffold ready\n");
-  });
+  .command("login")
+  .description("Authenticate with Agentura")
+  .action(loginCommand);
 
-program.parse();
+program
+  .command("init")
+  .description("Initialize agentura.yaml in current directory")
+  .action(initCommand);
+
+program
+  .command("run")
+  .description("Run evals locally")
+  .option("--suite <name>", "Run only a specific suite")
+  .option("--verbose", "Show individual case results")
+  .action(runCommand);
+
+program.parseAsync().catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : "Unexpected CLI error";
+  console.error(chalk.red(message));
+  process.exit(1);
+});
