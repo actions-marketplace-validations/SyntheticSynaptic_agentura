@@ -7,10 +7,10 @@
 
 ## Current Status
 
-**Active milestone:** 17 — SDK Package
-**Progress:** 16 / 19 milestones complete
-**Last updated:** Milestone 16 complete: browser-based CLI auth flow fully validated end-to-end with Prisma-backed token persistence across serverless invocations
-**Next action:** Begin Milestone 17 — design and publish `@agentura/sdk` middleware for richer telemetry reporting
+**Active milestone:** 18 — SDK Package
+**Progress:** 17 / 19 milestones complete
+**Last updated:** Milestone 17 complete: documentation + onboarding flow shipped (README rewrite, quickstart/config/strategy docs, dashboard first-run CTA, PR comment screenshot)
+**Next action:** Begin Milestone 18 — design and publish `@agentura/sdk` middleware for richer telemetry reporting
 
 ---
 
@@ -63,8 +63,8 @@ cd packages/cli && npx tsx src/index.ts run
 | 14 | API Key Management | ✅ Complete | API key management shipped end-to-end (create/list/revoke), one-time raw key reveal enforced, and CLI login validated with generated keys |
 | 15 | Landing Page + Waitlist + Pricing | ✅ Complete | Public landing page shipped with hero, social proof, PR comment mockup, feature grid, 3-tier pricing, and waitlist submission endpoint |
 | 16 | CLI Auth Flow | ✅ Complete | Browser auth flow validated end-to-end, CLI key saved to `~/.agentura/config.json`, and token exchange persistence moved from in-memory storage to Prisma for serverless reliability |
-| 17 | SDK Package | 📋 Planned | Publish optional `@agentura/sdk` middleware for richer telemetry reporting |
-| 18 | Documentation + Onboarding | 📋 Planned | Build self-serve docs, strategy guides, troubleshooting, and contributor onboarding |
+| 17 | Documentation + Onboarding | ✅ Complete | README rewritten, quickstart/config/strategy docs added, and dashboard empty-state CTA directs new users to first-run setup |
+| 18 | SDK Package | 📋 Planned | Publish optional `@agentura/sdk` middleware for richer telemetry reporting |
 | 19 | Dashboard Polish + Settings | 📋 Planned | Improve settings UX, pagination, mobile responsiveness, and health/status page |
 
 ---
@@ -1283,3 +1283,34 @@ Milestone 16 — run the three manual E2E tests (browser auth, manual fallback, 
 
 **Next session:**
 Milestone 17 — SDK Package
+
+## Session — 2026-03-06 08:05 UTC
+
+**Milestone:** 17 — Documentation + Onboarding
+**Status:** COMPLETE
+
+**Files created:**
+- `README.md` — complete onboarding-focused rewrite with quick start, strategy table, config example, and demo screenshot reference
+- `docs/quickstart.md` — zero-to-first-green-check setup guide with exact 5-step flow
+- `docs/agentura-yaml.md` — field-by-field configuration reference with defaults and examples
+- `docs/strategies.md` — practical strategy guide for `golden_dataset`, `llm_judge`, and `performance`
+
+**Files modified:**
+- `apps/web/src/app/dashboard/page.tsx` — added first-run empty state for connected repos with no eval runs and Quick Start CTA
+- `docs/Documentation.md` — marked milestone completion and appended this session handoff
+
+**Decisions made:**
+- Prioritized task-oriented docs structure ("what do I do next?") for Alex persona and linked dashboard empty state directly to GitHub README quick-start anchor.
+
+**Validation results:**
+- `pnpm run type-check`: PASS
+- `pnpm run build`: PASS
+- Manual validation: PASS
+  - PR comment screenshot added at `docs/images/pr-comment.png`
+  - Documentation content reviewed and confirmed clear/comprehensive
+
+**Issues found:**
+- None
+
+**Next session:**
+Milestone 18 — SDK Package
