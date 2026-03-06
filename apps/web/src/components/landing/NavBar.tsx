@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export function NavBar() {
-  const installUrl = "https://github.com/apps/agenturai-ci/installations/new";
+  const installUrl = "https://github.com/apps/agenturaci/installations/new";
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-800/80 bg-slate-950/90 backdrop-blur">

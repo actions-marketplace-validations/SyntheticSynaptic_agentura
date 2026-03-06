@@ -1,5 +1,5 @@
 export function HeroSection() {
-  const installUrl = "https://github.com/apps/agenturai-ci/installations/new";
+  const installUrl = "https://github.com/apps/agenturaci/installations/new";
 
   return (
     <section className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-6 py-16">
