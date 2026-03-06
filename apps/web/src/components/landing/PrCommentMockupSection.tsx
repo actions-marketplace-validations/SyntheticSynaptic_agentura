@@ -3,11 +3,11 @@ export function PrCommentMockupSection() {
     <section className="px-6 py-20">
       <div className="mx-auto w-full max-w-6xl">
         <h2 className="text-center text-3xl font-semibold tracking-tight text-white">
-          See exactly what changed
+          See exactly what changed, on every PR
         </h2>
         <p className="mx-auto mt-4 max-w-3xl text-center text-slate-300">
-          Agentura posts a detailed results table on every PR so your team can review quality
-          changes before merging.
+          Agentura posts a detailed results table directly in your PR. Your team sees pass/fail
+          before merging — no dashboard required.
         </p>
 
         <div className="mx-auto mt-10 max-w-4xl rounded-xl border border-slate-700 bg-[#0d1117] shadow-[0_10px_50px_rgba(0,0,0,0.35)]">

@@ -2,19 +2,19 @@ const steps = [
   {
     icon: "🧩",
     title: "Install the GitHub App",
-    description: "Click install, select your repos. Takes 30 seconds.",
+    description: "Select your repos. Takes 30 seconds.",
   },
   {
     icon: "📄",
-    title: "Add agentura.yaml",
+    title: "Add one YAML file",
     description:
-      "Drop a config file in your repo. Point it at your agent endpoint. Done.",
+      "Point it at your agent endpoint. No code changes to your agent.",
   },
   {
     icon: "✅",
-    title: "Every PR gets a quality check",
+    title: "Every PR gets an automatic test",
     description:
-      "Open a PR. Agentura runs your evals automatically and posts results as a PR comment and GitHub Check.",
+      "Open a PR. Agentura runs your evals and posts a pass/fail result with full details.",
   },
 ];
 

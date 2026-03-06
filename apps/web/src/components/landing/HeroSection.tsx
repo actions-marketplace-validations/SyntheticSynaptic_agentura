@@ -5,12 +5,12 @@ export function HeroSection() {
     <section className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-6 py-16">
       <div className="mx-auto w-full max-w-4xl text-center">
         <h1 className="text-balance text-4xl font-bold tracking-tight text-white sm:text-6xl">
-          Add AI quality checks to every PR in 5 minutes
+          Know if your AI got better or worse on every PR
         </h1>
         <p className="mx-auto mt-6 max-w-3xl text-pretty text-lg leading-relaxed text-slate-300">
-          No code changes. Just install the GitHub App and add a YAML file. Every PR gets
-          an automatic quality check that compares your agent&apos;s performance against the
-          baseline.
+          Agentura automatically tests your AI agent on every pull request and tells you if
+          it got better or worse. No code changes required. Just install the GitHub App and
+          add a YAML file.
         </p>
         <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <a

@@ -1,32 +1,32 @@
 const features = [
   {
-    title: "Golden Dataset Testing",
+    title: "Catch Regressions Before They Ship",
     description:
-      "Test your agent against a curated set of input/output pairs. Catch regressions before they reach production.",
+      "Every PR is automatically tested against your eval suite. Know immediately if a prompt change broke something.",
   },
   {
-    title: "LLM-as-Judge",
+    title: "No Code Changes Required",
     description:
-      "Use an LLM to evaluate subjective quality — tone, accuracy, helpfulness. No rigid exact-match required.",
+      "Works with any agent that has an HTTP endpoint. No SDK. No library. No lock-in.",
   },
   {
-    title: "Performance Benchmarking",
+    title: "LLM-as-Judge for Subjective Quality",
     description:
-      "Track latency across every eval run. Get p50, p95, p99. Know when your agent slows down.",
+      "Use an LLM to score tone, accuracy, and helpfulness — not just exact string matches.",
   },
   {
-    title: "Regression Detection",
+    title: "Track Performance Over Time",
     description:
-      "Automatically compare every PR against your main branch baseline. Block merges when quality drops.",
+      "See latency trends across every eval run. Know when your agent slows down before your users do.",
   },
   {
-    title: "Zero SDK Required",
+    title: "Baseline Comparison on Every PR",
     description:
-      "Works with any agent that has an HTTP endpoint. No code changes. No framework lock-in.",
+      "Agentura compares every PR against your main branch baseline and shows you the delta.",
   },
   {
-    title: "CLI for Local Testing",
-    description: "Run evals locally before pushing. `agentura run` gives you instant feedback.",
+    title: "Run Evals Locally Too",
+    description: "Use the CLI to test before pushing. 'agentura run' gives instant feedback in your terminal.",
   },
 ];
 

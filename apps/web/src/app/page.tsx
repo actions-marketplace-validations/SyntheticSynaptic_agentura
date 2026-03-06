@@ -21,9 +21,9 @@ export default function HomePage() {
         <PricingSection />
         <section id="waitlist" className="px-6 py-20">
           <div className="mx-auto w-full max-w-3xl rounded-xl border border-slate-800 bg-slate-900/70 p-8">
-            <h2 className="text-3xl font-semibold tracking-tight text-white">Get early access to Pro</h2>
+            <h2 className="text-3xl font-semibold tracking-tight text-white">Get early access</h2>
             <p className="mt-3 text-slate-300">
-              We&apos;re onboarding teams one by one. Join the waitlist and we&apos;ll reach out
+              We&apos;re onboarding developers one by one. Drop your email and we&apos;ll reach out
               when you&apos;re up.
             </p>
             <div className="mt-6">
