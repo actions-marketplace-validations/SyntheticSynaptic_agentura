@@ -16,7 +16,7 @@ export function getDefaultBaseUrl(): string {
     return envBaseUrl;
   }
 
-  return "http://localhost:3000";
+  return "https://agentura-ci.vercel.app";
 }
 
 export async function loadConfig(): Promise<CliConfig | null> {

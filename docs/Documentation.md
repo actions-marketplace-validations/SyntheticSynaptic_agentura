@@ -9,8 +9,8 @@
 
 **Active milestone:** 16 — CLI Auth Flow
 **Progress:** 15 / 19 milestones complete
-**Last updated:** Milestone 15 completed (landing page + waitlist shipped) and Milestone 16 implementation started with `/cli-auth`
-**Next action:** Validate `/cli-auth` browser-to-terminal flow end-to-end and then mark Milestone 16 complete
+**Last updated:** Milestone 16 browser-based CLI auth flow implemented (`request/exchange/approve` API + CLI polling + `/cli-auth` approval UI)
+**Next action:** Run manual end-to-end CLI auth validation (browser approve flow, manual fallback, unauth redirect flow)
 
 ---
 
@@ -62,7 +62,7 @@ cd packages/cli && npx tsx src/index.ts run
 | 13 | Production Deployment | ✅ Complete | Production live: web on Vercel (`https://agentura-ci.vercel.app`), worker on Railway, OAuth working, and production PR checks/comments verified |
 | 14 | API Key Management | ✅ Complete | API key management shipped end-to-end (create/list/revoke), one-time raw key reveal enforced, and CLI login validated with generated keys |
 | 15 | Landing Page + Waitlist + Pricing | ✅ Complete | Public landing page shipped with hero, social proof, PR comment mockup, feature grid, 3-tier pricing, and waitlist submission endpoint |
-| 16 | CLI Auth Flow | 🚧 In progress | `/cli-auth` page added with auth guard and one-time CLI token generation/copy UX powered by existing `apiKeys.create` |
+| 16 | CLI Auth Flow | 🚧 In progress | Device-style browser auth flow implemented: CLI token request/polling, `/cli-auth` approval UI, signed auth-only approve endpoint, and manual fallback flag |
 | 17 | SDK Package | 📋 Planned | Publish optional `@agentura/sdk` middleware for richer telemetry reporting |
 | 18 | Documentation + Onboarding | 📋 Planned | Build self-serve docs, strategy guides, troubleshooting, and contributor onboarding |
 | 19 | Dashboard Polish + Settings | 📋 Planned | Improve settings UX, pagination, mobile responsiveness, and health/status page |
@@ -1221,3 +1221,36 @@ Milestone 15 — run manual browser checks (landing sections, waitlist success s
 
 **Next session:**
 Milestone 16 — run local/browser validation of `/cli-auth`, confirm CLI login handoff, then mark milestone complete
+
+## Session — 2026-03-06 04:05 UTC
+
+**Milestone:** 16 — CLI Auth Flow
+**Status:** IN PROGRESS
+
+**Files created:**
+- `apps/web/src/lib/cli-tokens.ts` — in-memory pending token store with 10-minute TTL cleanup helpers
+- `apps/web/src/app/api/cli-auth/request/route.ts` — CLI token registration endpoint (`POST`)
+- `apps/web/src/app/api/cli-auth/exchange/route.ts` — CLI polling endpoint (`GET`) returning pending/complete states
+- `apps/web/src/app/api/cli-auth/approve/route.ts` — authenticated approval endpoint (`POST`) that creates API key and fulfills pending token
+
+**Files modified:**
+- `apps/web/src/app/cli-auth/page.tsx` — rebuilt page into browser authorization flow (invalid link state, sign-in state, approve/cancel state, success state)
+- `apps/web/src/app/(auth)/login/page.tsx` — added `redirect` query handling and OAuth callback forwarding
+- `apps/web/src/app/auth/callback/route.ts` — added safe post-auth redirect via `next` query param
+- `packages/cli/src/commands/login.ts` — switched to device flow (request token, open browser, poll exchange, save API key) with `--manual` fallback
+- `packages/cli/src/lib/config.ts` — default base URL updated to production (`https://agentura-ci.vercel.app`) unless `AGENTURA_BASE_URL` is set
+- `packages/cli/src/index.ts` — added `--manual` option to `agentura login`
+- `docs/Documentation.md` — updated current milestone status and appended this session handoff
+
+**Decisions made:**
+- Added minimal scope expansion to update login/callback redirect plumbing and CLI command registration because browser auth cannot complete reliably without those two integration points.
+
+**Validation results:**
+- `pnpm run type-check`: PASS
+- `pnpm run build`: PASS
+
+**Issues found:**
+- Local build still logs non-blocking DNS lookup warnings for unavailable Upstash host in this environment, but build completes successfully.
+
+**Next session:**
+Milestone 16 — run the three manual E2E tests (browser auth, manual fallback, unauth flow), then mark milestone complete if all pass

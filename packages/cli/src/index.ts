@@ -15,6 +15,7 @@ program
 program
   .command("login")
   .description("Authenticate with Agentura")
+  .option("--manual", "Enter an API key manually instead of browser authorization")
   .action(loginCommand);
 
 program

@@ -1,30 +1,47 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { trpc } from "../../components/providers";
+import Link from "next/link";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../lib/supabase/client";
 
-export default function CliAuthPage() {
-  const router = useRouter();
-  const [isCheckingSession, setIsCheckingSession] = useState(true);
-  const [revealedToken, setRevealedToken] = useState<string | null>(null);
-  const [isFinished, setIsFinished] = useState(false);
-  const [copyState, setCopyState] = useState<"idle" | "copying" | "copied">("idle");
-  const [isPending, startTransition] = useTransition();
+type SessionStatus = "checking" | "unauthenticated" | "authenticated";
 
-  const createMutation = trpc.apiKeys.create.useMutation({
-    onSuccess: (result) => {
-      setRevealedToken(result.raw);
-      setIsFinished(false);
-      setCopyState("idle");
-    },
+const TOKEN_PATTERN = /^[a-zA-Z0-9]{32,64}$/;
+
+interface SessionProfile {
+  githubLogin: string | null;
+  avatarUrl: string | null;
+}
+
+function CliAuthPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [sessionStatus, setSessionStatus] = useState<SessionStatus>("checking");
+  const [sessionProfile, setSessionProfile] = useState<SessionProfile>({
+    githubLogin: null,
+    avatarUrl: null,
   });
+  const [isApproving, setIsApproving] = useState(false);
+  const [isApproved, setIsApproved] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const token = searchParams.get("token")?.trim() ?? "";
+  const tokenIsValid = useMemo(() => TOKEN_PATTERN.test(token), [token]);
+  const redirectTarget = token
+    ? `/cli-auth?token=${encodeURIComponent(token)}`
+    : "/cli-auth";
+  const loginLink = `/login?redirect=${encodeURIComponent(redirectTarget)}`;
 
   useEffect(() => {
     let isMounted = true;
 
     async function checkSession() {
+      if (!tokenIsValid) {
+        setSessionStatus("unauthenticated");
+        return;
+      }
+
       const supabase = createSupabaseBrowserClient();
       const {
         data: { session },
@@ -35,11 +52,17 @@ export default function CliAuthPage() {
       }
 
       if (!session) {
-        router.replace("/login");
+        setSessionStatus("unauthenticated");
         return;
       }
 
-      setIsCheckingSession(false);
+      const metadata = session.user.user_metadata;
+      const record = metadata && typeof metadata === "object" ? (metadata as Record<string, unknown>) : {};
+      const githubLogin = typeof record.user_name === "string" ? record.user_name : null;
+      const avatarUrl = typeof record.avatar_url === "string" ? record.avatar_url : null;
+
+      setSessionProfile({ githubLogin, avatarUrl });
+      setSessionStatus("authenticated");
     }
 
     void checkSession();
@@ -47,40 +70,52 @@ export default function CliAuthPage() {
     return () => {
       isMounted = false;
     };
-  }, [router]);
+  }, [tokenIsValid]);
 
-  const handleGenerateToken = () => {
-    if (createMutation.isPending || isPending) {
+  async function handleApprove() {
+    if (!tokenIsValid || isApproving) {
       return;
     }
 
-    startTransition(async () => {
-      await createMutation.mutateAsync({ name: "CLI Token" });
-    });
-  };
-
-  const handleCopy = async () => {
-    if (!revealedToken || copyState === "copying") {
-      return;
-    }
-
-    setCopyState("copying");
+    setIsApproving(true);
+    setErrorMessage(null);
     try {
-      await navigator.clipboard.writeText(revealedToken);
-      setCopyState("copied");
-      setRevealedToken(null);
-      setIsFinished(true);
+      const response = await fetch("/api/cli-auth/approve", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ token }),
+      });
+
+      const payload = (await response.json()) as { success?: boolean; error?: string };
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error ?? "Unable to authorize CLI");
+      }
+
+      setIsApproved(true);
     } catch {
-      setCopyState("idle");
+      setErrorMessage("Unable to authorize CLI. Please try again.");
+    } finally {
+      setIsApproving(false);
     }
-  };
+  }
 
-  const handleDismiss = () => {
-    setRevealedToken(null);
-    setIsFinished(true);
-  };
+  if (!tokenIsValid) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6">
+        <section className="w-full max-w-lg rounded-xl border border-red-500/30 bg-red-500/10 p-6">
+          <h1 className="text-2xl font-semibold text-red-100">Invalid authorization link</h1>
+          <p className="mt-2 text-sm text-red-200">
+            This CLI authorization link is missing a valid token. Please run{" "}
+            <code className="rounded bg-slate-900 px-1.5 py-0.5">agentura login</code> again.
+          </p>
+        </section>
+      </main>
+    );
+  }
 
-  if (isCheckingSession) {
+  if (sessionStatus === "checking") {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6">
         <p className="text-sm text-slate-300">Checking your session...</p>
@@ -88,62 +123,90 @@ export default function CliAuthPage() {
     );
   }
 
+  if (sessionStatus === "unauthenticated") {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6">
+        <section className="w-full max-w-lg rounded-xl border border-slate-800 bg-slate-900 p-8 text-center">
+          <h1 className="text-2xl font-semibold text-white">Sign in to authorize the Agentura CLI</h1>
+          <p className="mt-3 text-sm text-slate-300">
+            You&apos;ll return here automatically after signing in.
+          </p>
+          <Link
+            href={loginLink}
+            className="mt-6 inline-flex rounded-md bg-violet-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-400"
+          >
+            Sign in with GitHub
+          </Link>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6 py-10">
       <section className="w-full max-w-2xl rounded-xl border border-slate-800 bg-slate-900 p-8 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
-        <h1 className="text-3xl font-semibold tracking-tight text-white">Connect your CLI</h1>
-        <p className="mt-2 text-sm text-slate-300">
-          Generate a token and paste it in your terminal to finish{" "}
-          <code className="rounded bg-slate-800 px-1.5 py-0.5 text-slate-200">agentura login</code>.
+        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-violet-300">Agentura</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">Authorize CLI Access?</h1>
+        <div className="mt-4 flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950/70 p-3">
+          <div className="h-10 w-10 overflow-hidden rounded-full bg-slate-700">
+            {sessionProfile.avatarUrl ? (
+              <img src={sessionProfile.avatarUrl} alt="GitHub avatar" className="h-full w-full object-cover" />
+            ) : null}
+          </div>
+          <div>
+            <p className="text-sm font-medium text-white">
+              {sessionProfile.githubLogin ? `@${sessionProfile.githubLogin}` : "Signed in user"}
+            </p>
+            <p className="text-xs text-slate-400">GitHub account</p>
+          </div>
+        </div>
+        <p className="mt-4 text-sm text-slate-300">
+          This will create an API key and save it to your terminal session. You can revoke it
+          anytime from the dashboard.
         </p>
 
-        <button
-          type="button"
-          onClick={handleGenerateToken}
-          disabled={createMutation.isPending || isPending}
-          className="mt-6 rounded-md bg-violet-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          {createMutation.isPending || isPending ? "Generating..." : "Generate CLI Token"}
-        </button>
-
-        {createMutation.error ? (
-          <p className="mt-3 text-sm text-red-300">{createMutation.error.message}</p>
-        ) : null}
-
-        {revealedToken ? (
-          <div className="mt-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
-            <p className="text-sm font-medium text-amber-200">
-              Paste this token in your terminal to complete login
-            </p>
-            <p className="mt-2 text-sm text-amber-100">This key will only be shown once</p>
-            <code className="mt-3 block overflow-x-auto rounded-md border border-amber-400/40 bg-slate-950 px-3 py-2 text-xs text-amber-100">
-              {revealedToken}
-            </code>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="rounded-md border border-amber-300/60 px-4 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-500/20"
-              >
-                {copyState === "copying" ? "Copying..." : copyState === "copied" ? "Copied" : "Copy"}
-              </button>
-              <button
-                type="button"
-                onClick={handleDismiss}
-                className="rounded-md border border-slate-600 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {isFinished ? (
+        {isApproved ? (
           <p className="mt-6 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-200">
-            You can close this window.
+            ✓ CLI authorized! You can close this tab.
           </p>
-        ) : null}
+        ) : (
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                void handleApprove();
+              }}
+              disabled={isApproving}
+              className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isApproving ? "Approving..." : "Approve"}
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard")}
+              className="rounded-md border border-slate-600 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {errorMessage ? <p className="mt-3 text-sm text-red-300">{errorMessage}</p> : null}
       </section>
     </main>
+  );
+}
+
+export default function CliAuthPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6">
+          <p className="text-sm text-slate-300">Loading authorization...</p>
+        </main>
+      }
+    >
+      <CliAuthPageContent />
+    </Suspense>
   );
 }

@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Suspense, useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../../lib/supabase/client";
 
-export default function LoginPage() {
+function LoginPageContent() {
+  const searchParams = useSearchParams();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -11,9 +13,15 @@ export default function LoginPage() {
     startTransition(async () => {
       setErrorMessage(null);
       const supabase = createSupabaseBrowserClient();
+      const redirectPath = searchParams.get("redirect");
+      const callbackUrl = new URL("/auth/callback", window.location.origin);
+      if (redirectPath && redirectPath.startsWith("/")) {
+        callbackUrl.searchParams.set("next", redirectPath);
+      }
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "github",
-        options: { redirectTo: `${window.location.origin}/auth/callback` },
+        options: { redirectTo: callbackUrl.toString() },
       });
 
       if (error) {
@@ -46,5 +54,19 @@ export default function LoginPage() {
         ) : null}
       </section>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
+          <p className="text-sm text-slate-600">Loading login...</p>
+        </main>
+      }
+    >
+      <LoginPageContent />
+    </Suspense>
   );
 }

@@ -17,6 +17,7 @@ function metadataField(
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
+  const nextPath = requestUrl.searchParams.get("next");
 
   if (!code) {
     return NextResponse.redirect(new URL("/login?error=missing_code", requestUrl.origin));
@@ -53,5 +54,6 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  return NextResponse.redirect(new URL("/dashboard", requestUrl.origin));
+  const safeNextPath = nextPath && nextPath.startsWith("/") ? nextPath : "/dashboard";
+  return NextResponse.redirect(new URL(safeNextPath, requestUrl.origin));
 }
