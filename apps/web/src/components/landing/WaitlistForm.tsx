@@ -21,15 +21,14 @@ export function WaitlistForm() {
       });
 
       if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
-        throw new Error(payload.error ?? "Something went wrong");
+        throw new Error("Something went wrong, try again.");
       }
 
       setIsSuccess(true);
       setEmail("");
     } catch (submitError) {
       setError(
-        submitError instanceof Error ? submitError.message : "Unable to join waitlist right now"
+        submitError instanceof Error ? submitError.message : "Something went wrong, try again."
       );
     } finally {
       setIsSubmitting(false);

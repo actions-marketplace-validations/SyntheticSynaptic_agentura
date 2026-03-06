@@ -1,19 +1,30 @@
+import { prisma } from "@agentura/db";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const waitlistPayloadSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+});
 
 export async function POST(request: Request) {
   try {
-    const payload = (await request.json()) as { email?: string };
-    const email = payload.email?.trim().toLowerCase();
+    const payload = await request.json();
+    const parsedPayload = waitlistPayloadSchema.safeParse(payload);
 
-    if (!email || !EMAIL_PATTERN.test(email)) {
-      return NextResponse.json({ success: false, error: "Invalid email address" }, { status: 400 });
+    if (!parsedPayload.success) {
+      return NextResponse.json({ success: false, error: "Invalid email" }, { status: 400 });
     }
 
-    console.log("[waitlist] new signup:", email);
+    await prisma.waitlistEntry.upsert({
+      where: { email: parsedPayload.data.email },
+      update: {},
+      create: {
+        email: parsedPayload.data.email,
+      },
+    });
+
     return NextResponse.json({ success: true });
   } catch {
-    return NextResponse.json({ success: false, error: "Invalid request payload" }, { status: 400 });
+    return NextResponse.json({ success: false, error: "Invalid email" }, { status: 400 });
   }
 }

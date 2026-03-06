@@ -9,7 +9,7 @@
 
 **Active milestone:** 18 — SDK Package
 **Progress:** 17 / 19 milestones complete
-**Last updated:** Milestone 17 complete: documentation + onboarding flow shipped (README rewrite, quickstart/config/strategy docs, dashboard first-run CTA, PR comment screenshot)
+**Last updated:** Waitlist signups now persist in Supabase via Prisma (`WaitlistEntry`) with `/api/waitlist` upsert and validated server-side input
 **Next action:** Begin Milestone 18 — design and publish `@agentura/sdk` middleware for richer telemetry reporting
 
 ---
@@ -1311,6 +1311,36 @@ Milestone 17 — SDK Package
 
 **Issues found:**
 - None
+
+**Next session:**
+Milestone 18 — SDK Package
+
+## Session — 2026-03-06 07:45 UTC
+
+**Milestone:** 18 — SDK Package
+**Status:** IN PROGRESS
+
+**Files created:**
+- `packages/db/prisma/migrations/20260306073351_add_waitlist/migration.sql` — adds `WaitlistEntry` table for persistent waitlist signups
+
+**Files modified:**
+- `packages/db/prisma/schema.prisma` — added `WaitlistEntry` model (`id`, unique `email`, `createdAt`)
+- `apps/web/src/app/api/waitlist/route.ts` — replaced console logging with zod-validated Prisma upsert persistence
+- `apps/web/src/components/landing/WaitlistForm.tsx` — standardized API error UI message to `Something went wrong, try again.`
+- `apps/web/package.json` — added missing web deps required by current code (`zod`, `@vercel/analytics`)
+- `pnpm-lock.yaml` — lockfile update from dependency installation
+- `docs/Documentation.md` — appended this session summary
+
+**Decisions made:**
+- Used `upsert` on `WaitlistEntry.email` so repeat signups are idempotent and never crash the endpoint.
+
+**Validation results:**
+- `cd packages/db && pnpm prisma migrate dev --name add_waitlist`: PASS
+- `pnpm run type-check`: PASS
+- `pnpm run build`: PASS (non-blocking local Upstash DNS warnings still appear in this environment)
+
+**Issues found:**
+- Local npm registry access required elevated network permissions in this environment for dependency installation.
 
 **Next session:**
 Milestone 18 — SDK Package
