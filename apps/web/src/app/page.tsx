@@ -1,3 +1,4 @@
+import { ComparisonStrip } from "../components/landing/ComparisonStrip";
 import { FeaturesSection } from "../components/landing/FeaturesSection";
 import { FooterSection } from "../components/landing/FooterSection";
 import { HeroSection } from "../components/landing/HeroSection";
@@ -8,6 +9,7 @@ import { PrCommentMockupSection } from "../components/landing/PrCommentMockupSec
 import { ScenariosSection } from "../components/landing/ScenariosSection";
 import { SocialProofBar } from "../components/landing/SocialProofBar";
 import { WaitlistForm } from "../components/landing/WaitlistForm";
+import { WhyNotDIYSection } from "../components/landing/WhyNotDIYSection";
 
 export default function HomePage() {
   return (
@@ -15,11 +17,13 @@ export default function HomePage() {
       <NavBar />
       <main>
         <HeroSection />
+        <ComparisonStrip />
         <ScenariosSection />
         <SocialProofBar />
         <HowItWorksSection />
         <PrCommentMockupSection />
         <FeaturesSection />
+        <WhyNotDIYSection />
         <PricingSection />
         <section id="waitlist" className="px-6 py-20">
           <div className="mx-auto w-full max-w-3xl rounded-xl border border-slate-800 bg-slate-900/70 p-8">

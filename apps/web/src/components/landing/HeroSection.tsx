@@ -8,9 +8,9 @@ export function HeroSection() {
           Catch broken AI answers before your users do
         </h1>
         <p className="mx-auto mt-6 max-w-3xl text-pretty text-lg leading-relaxed text-slate-300">
-          Every time your team makes a code change, your AI agent&apos;s behavior can shift in
-          unexpected ways. Agentura automatically runs your test suite on every pull request
-          and alerts you the moment something breaks — before it ships.
+          Every PR can silently change how your AI agent behaves. Agentura runs your eval
+          suite automatically on every pull request and shows you exactly what got better,
+          worse, or slower — before you merge.
         </p>
         <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <a
@@ -30,7 +30,10 @@ export function HeroSection() {
             View on GitHub
           </a>
         </div>
-        <p className="mt-5 text-sm text-slate-400">Free for 1 repo · No credit card required</p>
+        <p className="mt-5 text-sm text-slate-400">
+          Works with any HTTP endpoint · First result in under 10 minutes · Posts GitHub
+          Check + PR comment automatically
+        </p>
       </div>
     </section>
   );

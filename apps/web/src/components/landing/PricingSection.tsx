@@ -13,7 +13,7 @@ export function PricingSection() {
           <article className="rounded-xl border border-slate-700 bg-slate-900/70 p-7">
             <h3 className="text-xl font-semibold text-white">Free</h3>
             <p className="mt-2 text-4xl font-bold text-white">$0 / month</p>
-            <p className="mt-2 text-sm text-slate-300">For solo builders and side projects</p>
+            <p className="mt-2 text-sm text-slate-300">Prove the workflow</p>
             <ul className="mt-5 space-y-2 text-sm text-slate-200">
               <li>✓ 1 repository</li>
               <li>✓ 50 eval runs / month</li>
@@ -35,7 +35,7 @@ export function PricingSection() {
           <article className="rounded-xl border border-slate-700 bg-slate-900/80 p-7">
             <h3 className="text-xl font-semibold text-white">Indie</h3>
             <p className="mt-2 text-4xl font-bold text-white">$19 / month</p>
-            <p className="mt-2 text-sm text-slate-200">For solo founders shipping AI to users</p>
+            <p className="mt-2 text-sm text-slate-200">Solo production use</p>
             <ul className="mt-5 space-y-2 text-sm text-slate-100">
               <li>✓ 5 repositories</li>
               <li>✓ 500 eval runs / month</li>
@@ -57,14 +57,14 @@ export function PricingSection() {
             </p>
             <h3 className="mt-3 text-xl font-semibold text-white">Pro</h3>
             <p className="mt-2 text-4xl font-bold text-white">$49 / month</p>
-            <p className="mt-2 text-sm text-slate-200">For teams that can&apos;t afford regressions</p>
+            <p className="mt-2 text-sm text-slate-200">Team controls, policy, and scale</p>
             <ul className="mt-5 space-y-2 text-sm text-slate-100">
               <li>✓ Unlimited repositories</li>
               <li>✓ Unlimited eval runs</li>
               <li>✓ Priority support</li>
-              <li>✓ SSO + team management</li>
-              <li>✓ Custom eval strategies</li>
-              <li>✓ SLA guarantee</li>
+              <li>✓ Team management + SSO</li>
+              <li>✓ Merge blocking policies</li>
+              <li>✓ Audit logs</li>
             </ul>
             <a
               href="#waitlist"

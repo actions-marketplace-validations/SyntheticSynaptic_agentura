@@ -5,24 +5,24 @@ const features = [
       "Define test cases for your specific use case. Every PR automatically checks if your agent still passes them.",
   },
   {
-    title: "No Changes To Your Agent",
+    title: "Add Evals Without Rewriting Your Agent",
     description:
       "Works with any agent that has an HTTP endpoint. No SDK. No library. No lock-in. If it speaks HTTP, Agentura can test it.",
   },
   {
-    title: "Test Subjective Quality Too",
+    title: "Catch Subtle Regressions Exact-Match Misses",
     description:
-      "When there's no single correct answer, use an LLM judge to score quality against a rubric you define — tone, helpfulness, accuracy.",
+      "Use an LLM judge to score quality against a rubric you define — tone, helpfulness, accuracy. Anything your users care about.",
   },
   {
-    title: "Track Speed Across Every Change",
+    title: "Know When Your Agent Got Slower",
     description:
-      "Measure your agent's response time on every PR. Get alerted when a code change makes it slower.",
+      "Measure response time on every PR. Get alerted when a code change adds latency before customers feel it.",
   },
   {
-    title: "Compare Every PR To Your Baseline",
+    title: "See Exactly What Changed vs Yesterday",
     description:
-      "See exactly how your agent's scores changed compared to the main branch. Delta shown on every PR.",
+      "Every PR shows score delta against the main branch baseline. Know immediately if you're better or worse.",
   },
   {
     title: "Test Locally Before Pushing",
