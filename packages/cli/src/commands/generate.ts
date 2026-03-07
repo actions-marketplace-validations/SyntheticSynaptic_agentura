@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { setTimeout as delay } from "node:timers/promises";
 import chalk from "chalk";
 import yaml from "js-yaml";
 import { z } from "zod";
@@ -475,6 +476,8 @@ export async function generateCommand(options: GenerateCommandOptions = {}): Pro
       probeResults,
       count,
     });
+
+    await delay(500);
 
     console.log(chalk.gray("⚡ Generating quality rubric..."));
     const rubric = await callLLM(buildRubricPrompt(description));

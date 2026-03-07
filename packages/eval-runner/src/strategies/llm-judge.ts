@@ -1,4 +1,5 @@
 import { performance } from "node:perf_hooks";
+import { setTimeout as delay } from "node:timers/promises";
 import pLimit from "p-limit";
 
 import type { AgentFunction, EvalCase, EvalCaseResult, SuiteRunResult } from "@agentura/types";
@@ -11,6 +12,7 @@ export interface LlmJudgeRunConfig {
 }
 
 const CASE_CONCURRENCY = 5;
+const CASE_EVAL_DELAY_MS = 500;
 
 export async function runLlmJudge(
   config: LlmJudgeRunConfig,
@@ -24,6 +26,11 @@ export async function runLlmJudge(
   const caseResults = await Promise.all(
     cases.map((testCase, index) =>
       limit(async (): Promise<EvalCaseResult> => {
+        // Stagger case evaluations to reduce free-tier rate limit spikes.
+        if (index > 0) {
+          await delay(index * CASE_EVAL_DELAY_MS);
+        }
+
         const caseStartedAt = performance.now();
 
         try {
