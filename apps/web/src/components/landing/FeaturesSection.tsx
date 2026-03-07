@@ -5,9 +5,10 @@ const features = [
       "Define test cases for your specific use case. Every PR automatically checks if your agent still passes them.",
   },
   {
-    title: "Add Evals Without Rewriting Your Agent",
+    title: "Works With Any Agent — No SDK Required",
     description:
-      "Works with any agent that has an HTTP endpoint. No SDK. No library. No lock-in. If it speaks HTTP, Agentura can test it.",
+      "Every other eval tool wraps your code in their library. Agentura calls your existing HTTP endpoint directly. No code changes. No lock-in. Switch tools anytime.",
+    highlighted: true,
   },
   {
     title: "Catch Subtle Regressions Exact-Match Misses",
@@ -41,7 +42,9 @@ export function FeaturesSection() {
           {features.map((feature) => (
             <article
               key={feature.title}
-              className="rounded-xl border border-slate-800 bg-slate-900/70 p-6"
+              className={`rounded-xl border bg-slate-900/70 p-6 ${
+                feature.highlighted ? "border-violet-800" : "border-slate-800"
+              }`}
             >
               <h3 className="text-lg font-semibold text-white">{feature.title}</h3>
               <p className="mt-3 text-sm leading-relaxed text-slate-300">{feature.description}</p>

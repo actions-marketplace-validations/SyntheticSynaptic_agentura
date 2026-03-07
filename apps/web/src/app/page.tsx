@@ -1,4 +1,3 @@
-import { ComparisonStrip } from "../components/landing/ComparisonStrip";
 import { FeaturesSection } from "../components/landing/FeaturesSection";
 import { FooterSection } from "../components/landing/FooterSection";
 import { HeroSection } from "../components/landing/HeroSection";
@@ -7,7 +6,6 @@ import { NavBar } from "../components/landing/NavBar";
 import { PricingSection } from "../components/landing/PricingSection";
 import { PrCommentMockupSection } from "../components/landing/PrCommentMockupSection";
 import { ScenariosSection } from "../components/landing/ScenariosSection";
-import { SocialProofBar } from "../components/landing/SocialProofBar";
 import { WaitlistForm } from "../components/landing/WaitlistForm";
 import { WhyNotDIYSection } from "../components/landing/WhyNotDIYSection";
 
@@ -17,12 +15,10 @@ export default function HomePage() {
       <NavBar />
       <main>
         <HeroSection />
-        <ComparisonStrip />
         <ScenariosSection />
-        <SocialProofBar />
         <HowItWorksSection />
-        <PrCommentMockupSection />
         <FeaturesSection />
+        <PrCommentMockupSection />
         <WhyNotDIYSection />
         <PricingSection />
         <section id="waitlist" className="px-6 py-20">
