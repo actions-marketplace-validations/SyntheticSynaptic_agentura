@@ -200,8 +200,15 @@ Requirements:
 - Cover happy path cases (normal usage)
 - Cover edge cases (ambiguous queries, unusual requests)
 - Cover failure modes (things the agent should handle gracefully)
-- Expected values should be specific but not overly rigid
-  (key facts or phrases, not exact word-for-word matches)
+- Expected values must be a specific phrase or fact
+  that should appear in a correct response — not a
+  topic label. Examples:
+  BAD:  {"input": "what does it cost?", "expected": "pricing info"}
+  GOOD: {"input": "what does it cost?", "expected": "19"}
+  BAD:  {"input": "what features exist?", "expected": "feature list"}
+  GOOD: {"input": "what features exist?", "expected": "task tracking"}
+- Expected values should be 1-4 words that a correct
+  answer would always contain.
 - Do NOT include any explanation, markdown, or extra text
 - Output ONLY valid JSONL — one JSON object per line
 - No trailing commas, no arrays, no code fences
@@ -392,7 +399,9 @@ evals:
   - name: speed
     type: performance
     dataset: ./evals/accuracy.jsonl
-    latency_threshold_ms: 5000
+    # Increase for LLM-backed agents (typically 3-8s)
+    # Decrease for fast retrieval or classification agents
+    latency_threshold_ms: 8000
     threshold: 0.8
 ci:
   block_on_regression: false
