@@ -1,16 +1,23 @@
 {
   "name": "agentura",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "description": "Automated eval checks for AI agents on every PR",
   "bin": {
-    "agentura": "dist/index.js"
+    "agentura": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "dev": "tsx watch src/index.ts run",
     "build": "tsc -p tsconfig.json",
-    "type-check": "tsc --noEmit -p tsconfig.json"
+    "type-check": "tsc --noEmit -p tsconfig.json",
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "@agentura/eval-runner": "workspace:^",

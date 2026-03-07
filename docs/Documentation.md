@@ -1378,3 +1378,31 @@ Milestone 18 — run manual E2E checks for:
 
 **Next session:**
 Milestone 18 — SDK Package
+
+---
+
+## Session — 2026-03-07
+
+**Milestone:** 19 — Publish CLI to npm + enforce plan limits  
+**Status:** IN PROGRESS
+
+**Files modified:**
+- `packages/cli/package.json` — npm publish prep (`version: 0.1.0`, public publish config, `files`, `prepublishOnly`)
+- `README.md` — added global npm installation and first-run CLI command sequence
+- `apps/worker/src/queue-handlers/eval-run.ts` — added plan-based repo limit enforcement (free=1, indie=5, pro=unlimited), failed check/comment path, and migration-safe fallback if billing columns are not yet present
+- `apps/web/src/app/dashboard/page.tsx` — added free-plan upgrade banner when exactly 1 repo is connected
+
+**Files verified for install URL correctness:**
+- `apps/web/src/components/landing/HeroSection.tsx`
+- `apps/web/src/components/landing/PricingSection.tsx`
+- `apps/web/src/components/landing/NavBar.tsx`
+
+All use: `https://github.com/apps/agenturaci/installations/new`.
+
+**Validation results:**
+- `pnpm run type-check`: PASS
+- `pnpm run build`: PASS
+
+**Notes:**
+- CLI publish is prepared in code, but actual publish remains a human step (`npm login` + `npm publish` in `packages/cli`).
+- Repo-limit enforcement defaults safely when billing columns are not migrated yet, preventing worker crashes in partially migrated environments.

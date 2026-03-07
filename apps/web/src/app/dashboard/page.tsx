@@ -17,9 +17,14 @@ export default async function DashboardPage() {
     })
   );
 
-  const [me, projects] = await Promise.all([caller.users.me(), caller.projects.list()]);
+  const [me, projects, billing] = await Promise.all([
+    caller.users.me(),
+    caller.projects.list(),
+    caller.billing.current(),
+  ]);
   const installUrl = getAppInstallUrl();
   const hasEvalRuns = projects.some((project: (typeof projects)[number]) => project.lastRun);
+  const showUpgradeBanner = billing.plan === "free" && projects.length === 1;
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-3 px-6 py-12">
@@ -40,6 +45,20 @@ export default async function DashboardPage() {
           Billing
         </Link>
       </div>
+
+      {showUpgradeBanner ? (
+        <section className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm text-amber-900">
+            You&apos;re on the free plan (1 repo). Upgrade to Indie for 5 repos →
+          </p>
+          <Link
+            href="/dashboard/billing"
+            className="mt-3 inline-flex rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+          >
+            Upgrade for $20/mo
+          </Link>
+        </section>
+      ) : null}
 
       {projects.length === 0 ? (
         <section className="mt-4 rounded-xl border border-slate-200 bg-white p-6">

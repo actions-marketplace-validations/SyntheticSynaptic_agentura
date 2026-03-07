@@ -1,4 +1,4 @@
-import { prisma } from "@agentura/db";
+import { Prisma, prisma } from "@agentura/db";
 import {
   callCliAgent,
   callHttpAgent,
@@ -56,6 +56,12 @@ export interface EvalRunJobPayload {
 const MAX_INPUT_CHARS = 10_000;
 const DEFAULT_AGENT_TIMEOUT_MS = 30_000;
 const SUITE_CONCURRENCY = 10;
+const BILLING_PRICING_URL = "https://agentura-ci.vercel.app/pricing";
+const PLAN_LIMITS = {
+  free: { repos: 1 },
+  indie: { repos: 5 },
+  pro: { repos: -1 },
+} as const;
 
 function hasUsableGroqApiKey(): boolean {
   const value = process.env.GROQ_API_KEY;
@@ -235,6 +241,62 @@ function getLatencyThresholdMs(suite: EvalSuiteConfig): number | null {
   return value;
 }
 
+function normalizePlan(value: string | null | undefined): keyof typeof PLAN_LIMITS {
+  if (value === "indie" || value === "pro") {
+    return value;
+  }
+
+  return "free";
+}
+
+async function getRepoLimitStatus(installationDbId: string): Promise<{
+  plan: keyof typeof PLAN_LIMITS;
+  repoCount: number;
+  limit: number;
+} | null> {
+  try {
+    const user = await prisma.user.findFirst({
+      where: {
+        installations: {
+          some: { id: installationDbId },
+        },
+      },
+      select: {
+        id: true,
+        plan: true,
+        installations: {
+          select: {
+            projects: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      return null;
+    }
+
+    const plan = normalizePlan(user.plan);
+    const repoCount = user.installations.flatMap((item) => item.projects).length;
+    const limit = PLAN_LIMITS[plan].repos;
+
+    return { plan, repoCount, limit };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2022") {
+      console.warn(
+        "[worker] plan columns not available yet; skipping repo limit enforcement."
+      );
+      return null;
+    }
+
+    throw error;
+  }
+}
+
 export async function handleEvalRunJob(job: Job<EvalRunJobPayload>): Promise<void> {
   let evalRunId: string | null = null;
   let githubCheckRunId: bigint | null =
@@ -249,6 +311,7 @@ export async function handleEvalRunJob(job: Job<EvalRunJobPayload>): Promise<voi
         githubInstallId: installationId,
       },
       select: {
+        id: true,
         githubInstallId: true,
       },
     });
@@ -314,6 +377,51 @@ export async function handleEvalRunJob(job: Job<EvalRunJobPayload>): Promise<voi
         githubCheckRunId,
       },
     });
+
+    const repoLimitStatus = await getRepoLimitStatus(installation.id);
+    if (repoLimitStatus && repoLimitStatus.limit !== -1 && repoLimitStatus.repoCount > repoLimitStatus.limit) {
+      await prisma.evalRun.update({
+        where: {
+          id: evalRun.id,
+        },
+        data: {
+          status: "failed",
+          overallPassed: false,
+          totalCases: 0,
+          passedCases: 0,
+          durationMs: Date.now() - startedAt,
+          estimatedCostUsd: 0,
+          completedAt: new Date(),
+        },
+      });
+
+      if (githubCheckRunId !== null) {
+        await updateCheckRun(octokit, {
+          owner,
+          repo,
+          checkRunId: Number(githubCheckRunId),
+          conclusion: "failure",
+          summary: `Repo limit reached for your plan. Upgrade at ${BILLING_PRICING_URL}`,
+        });
+      }
+
+      if (prNumber !== null && config.ci.post_comment) {
+        const commentBody = `⚠️ Eval skipped — you've reached the ${String(
+          repoLimitStatus.limit
+        )} repo limit on the ${repoLimitStatus.plan} plan.
+Upgrade to Indie ($20/mo) for 5 repos at ${BILLING_PRICING_URL}
+
+<!-- agentura-eval-comment -->`;
+
+        try {
+          await upsertPrComment(octokit, owner, repo, prNumber, commentBody);
+        } catch (commentError) {
+          console.error("[worker] failed to upsert repo-limit PR comment:", commentError);
+        }
+      }
+
+      return;
+    }
 
     const agentFn = createAgentFunction(config.agent);
     const suiteResults: SuiteRunResult[] = [];

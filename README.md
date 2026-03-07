@@ -22,6 +22,20 @@ Automated eval checks for every PR — no code changes required.
 
 Full guide: [docs/quickstart.md](docs/quickstart.md)
 
+## Installation
+
+```bash
+npm install -g agentura
+```
+
+Then:
+
+```bash
+agentura login
+agentura init
+agentura run
+```
+
 ## How it works
 
 PR opened → GitHub webhook → Agentura worker → Runs eval suites → Posts PR comment + Check Run → Dashboard shows trend over time
