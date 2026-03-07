@@ -2,7 +2,7 @@ version: 1
 
 agent:
   type: http
-  endpoint: http://localhost:3001/api/agent
+  endpoint: http://localhost:3001/api/agent  # replace with your endpoint
   timeout_ms: 10000
 
 evals:
