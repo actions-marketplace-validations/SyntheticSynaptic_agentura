@@ -1,9 +1,10 @@
 import { CodeBlock } from "../../../components/docs/CodeBlock";
+import { ProseSection } from "../../../components/docs/ProseSection";
 
 const goldenConfig = `- name: accuracy
   type: golden_dataset
   dataset: ./evals/accuracy.jsonl
-  scorer: exact_match
+  scorer: fuzzy
   threshold: 0.8`;
 
 const goldenDataset = `{"input": "what is 2+2", "expected": "4"}
@@ -27,10 +28,10 @@ const performanceConfig = `- name: speed
   latency_threshold_ms: 5000
   threshold: 0.8`;
 
-function BestForCallout({ text }: { text: string }) {
+function BestFor({ text }: { text: string }) {
   return (
     <div className="mb-4 rounded-lg bg-slate-800 p-4">
-      <p className="text-xs font-semibold uppercase tracking-wider text-violet-400">Best for</p>
+      <p className="text-xs font-semibold uppercase tracking-wider text-violet-400">BEST FOR</p>
       <p className="mt-2 text-sm leading-relaxed text-slate-300">{text}</p>
     </div>
   );
@@ -38,24 +39,15 @@ function BestForCallout({ text }: { text: string }) {
 
 export default function DocsStrategiesPage() {
   return (
-    <article className="mx-auto w-full max-w-3xl pb-20">
-      <header>
-        <h1 className="mb-2 text-3xl font-bold text-white">Eval Strategies</h1>
-        <p className="mb-4 text-sm leading-relaxed text-slate-300">
-          Three ways to test your AI agent
-        </p>
-      </header>
-
+    <ProseSection title="Eval Strategies" subtitle="Three ways to test your AI agent">
       <section>
-        <h2 className="mb-4 mt-12 border-t border-slate-800 pt-8 text-xl font-semibold text-white">
-          golden_dataset
-        </h2>
-        <BestForCallout text="Factual Q&A, classification, and structured outputs where you know the expected answer." />
+        <h2 className="mb-4 text-xl font-semibold text-white">golden_dataset</h2>
+        <BestFor text="Known-answer tasks like factual QA, classification, and structured output checks." />
         <p className="mb-4 text-sm leading-relaxed text-slate-300">
-          This strategy runs each case and compares the agent output against the expected output.
-          Use <strong className="font-medium text-white">exact_match</strong>,{" "}
-          <strong className="font-medium text-white">contains</strong>, or{" "}
-          <strong className="font-medium text-white">semantic_similarity</strong> scoring.
+          Runs your input/expected pairs and scores each response with your selected scorer. Use{" "}
+          <strong className="font-medium text-white">fuzzy</strong> for most teams,{" "}
+          <strong className="font-medium text-white">exact_match</strong> for strict outputs, and{" "}
+          <strong className="font-medium text-white">semantic_similarity</strong> when wording can vary.
         </p>
         <h3 className="mb-2 mt-6 text-base font-semibold text-white">Example config</h3>
         <CodeBlock code={goldenConfig} language="yaml" />
@@ -67,10 +59,10 @@ export default function DocsStrategiesPage() {
         <h2 className="mb-4 mt-12 border-t border-slate-800 pt-8 text-xl font-semibold text-white">
           llm_judge
         </h2>
-        <BestForCallout text="Subjective quality checks like tone, helpfulness, and style where there is no single exact answer." />
+        <BestFor text="Subjective quality checks where there is no single exact answer (tone, helpfulness, completeness)." />
         <p className="mb-4 text-sm leading-relaxed text-slate-300">
-          This strategy asks a judge model to score each response against your rubric. Scores are in
-          the range <code className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-xs text-violet-300">0.0-1.0</code>.
+          Uses an LLM judge to score outputs against your rubric on a 0.0–1.0 scale. This is ideal
+          for evaluating behavior and communication quality.
         </p>
         <h3 className="mb-2 mt-6 text-base font-semibold text-white">Example config</h3>
         <CodeBlock code={llmJudgeConfig} language="yaml" />
@@ -82,14 +74,14 @@ export default function DocsStrategiesPage() {
         <h2 className="mb-4 mt-12 border-t border-slate-800 pt-8 text-xl font-semibold text-white">
           performance
         </h2>
-        <BestForCallout text="Latency budgets and speed regressions when response time matters as much as correctness." />
+        <BestFor text="Latency budgets and speed regression detection when response time is critical." />
         <p className="mb-4 text-sm leading-relaxed text-slate-300">
-          This strategy measures response latency per case and tracks suite-level metrics like p50,
-          p95, and p99. It does not score semantic correctness.
+          Measures per-case latency and computes suite-level pass rate based on your threshold.
+          Performance suites catch slowdowns before users feel them.
         </p>
         <h3 className="mb-2 mt-6 text-base font-semibold text-white">Example config</h3>
         <CodeBlock code={performanceConfig} language="yaml" />
       </section>
-    </article>
+    </ProseSection>
   );
 }
