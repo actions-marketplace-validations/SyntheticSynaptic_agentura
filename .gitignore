@@ -130,7 +130,7 @@ dist
 .yarn/*
 !.yarn/patches
 !.yarn/plugins
-!.yarn/releases
+!.yarn/releases 
 !.yarn/sdks
 !.yarn/versions
 
@@ -138,5 +138,4 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .DS_Store
-**/.DS_Store
 .turbo
