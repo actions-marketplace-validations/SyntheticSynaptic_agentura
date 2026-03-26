@@ -5,6 +5,10 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**", ".next/**"]
     },
+    "agentura#build": {
+      "dependsOn": ["^build", "@agentura/eval-runner#build"],
+      "outputs": ["dist/**"]
+    },
     "type-check": {
       "dependsOn": ["^type-check"],
       "outputs": []

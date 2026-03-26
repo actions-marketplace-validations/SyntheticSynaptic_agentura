@@ -1780,3 +1780,33 @@ Milestone 18 — run manual `agentura generate` end-to-end checks and, after rev
 
 **Next session:**
 Milestone 18 — run the pending manual `agentura generate` end-to-end checks and missing-config validation flow.
+
+## Session — 2026-03-26 09:32 UTC
+
+**Milestone:** 18 — CLI: agentura generate
+**Status:** IN PROGRESS
+
+**Files created:**
+- None
+
+**Files modified:**
+- `packages/cli/tsup.config.ts` — switched workspace packages from bundled `noExternal` handling to an explicit `external` list for runtime monorepo resolution
+- `turbo.json` — added an `agentura#build` dependency edge on `@agentura/eval-runner#build`
+- `docs/Documentation.md` — appended this session entry
+
+**Decisions made:**
+- Marked `@agentura/eval-runner`, `@agentura/types`, `@agentura/db`, and `@agentura/sdk` as external in the CLI bundle so `tsup` leaves workspace resolution to runtime instead of trying to inline those packages.
+- Added a package-specific Turbo dependency for `agentura#build` because the CLI package does not currently declare `@agentura/eval-runner` as a workspace dependency, so the default `^build` graph alone was not enough to guarantee build order.
+
+**Validation results:**
+- `git diff --check`: PASS
+- `pnpm --filter @agentura/eval-runner build`: PASS
+- `pnpm --filter agentura build`: PASS
+- `pnpm exec turbo run build --filter=agentura`: PASS
+- `pnpm run type-check`: PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Milestone 18 — run the pending manual `agentura generate` end-to-end checks and missing-config validation flow.

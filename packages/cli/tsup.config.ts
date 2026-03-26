@@ -6,6 +6,11 @@ export default defineConfig({
   target: "node18",
   clean: true,
   dts: false,
-  noExternal: ["@agentura/eval-runner", "@agentura/types"],
+  external: [
+    "@agentura/eval-runner",
+    "@agentura/types",
+    "@agentura/db",
+    "@agentura/sdk",
+  ],
   banner: { js: "#!/usr/bin/env node" },
 });
