@@ -1810,3 +1810,32 @@ Milestone 18 — run the pending manual `agentura generate` end-to-end checks an
 
 **Next session:**
 Milestone 18 — run the pending manual `agentura generate` end-to-end checks and missing-config validation flow.
+
+## Session — 2026-03-26 09:49 UTC
+
+**Milestone:** 18 — CLI: agentura generate
+**Status:** IN PROGRESS
+
+**Files created:**
+- None
+
+**Files modified:**
+- `turbo.json` — added `@agentura/types#build` and `@agentura/eval-runner#build` as dependencies of `agentura#type-check`
+- `packages/cli/tsconfig.json` — added workspace `paths` entries pointing CLI type-check resolution at built `dist` outputs for `@agentura/types` and `@agentura/eval-runner`
+- `packages/cli/src/lib/local-run.ts` — added explicit `string` types for the three local agent `input` parameters and `EvalCaseResult` for the verbose case printer callback
+- `docs/Documentation.md` — appended this session entry
+
+**Decisions made:**
+- Used `paths` in the CLI `tsconfig` rather than TypeScript project references because the referenced workspace packages are not currently configured as composite projects, and the requested build-first behavior is already enforced by Turbo.
+- Pointed CLI workspace resolution at built `dist` declarations on purpose so type-checking matches the runtime package boundary instead of silently reaching into sibling source trees.
+
+**Validation results:**
+- `git diff --check`: PASS
+- `pnpm exec turbo run type-check --filter=agentura --force`: PASS
+- `pnpm run type-check`: PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Milestone 18 — run the pending manual `agentura generate` end-to-end checks and missing-config validation flow.

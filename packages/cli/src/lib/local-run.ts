@@ -15,7 +15,7 @@ import {
   runPerformance,
 } from "@agentura/eval-runner";
 import type { ResolvedLlmJudgeProvider } from "@agentura/eval-runner";
-import type { AgentConfig, AgentFunction, SuiteRunResult } from "@agentura/types";
+import type { AgentFunction, EvalCaseResult, SuiteRunResult } from "@agentura/types";
 import { z } from "zod";
 
 import { loadDataset } from "./load-dataset";
@@ -349,7 +349,7 @@ function createLocalAgentFunction(agentConfig: ParsedConfig["agent"], cwd: strin
   const timeoutMs = agentConfig.timeout_ms ?? 30_000;
 
   if (agentConfig.type === "http") {
-    return async (input) => {
+    return async (input: string) => {
       const result = await callHttpAgent({
         endpoint: agentConfig.endpoint as string,
         input,
@@ -371,7 +371,7 @@ function createLocalAgentFunction(agentConfig: ParsedConfig["agent"], cwd: strin
   }
 
   if (agentConfig.type === "cli") {
-    return async (input) => {
+    return async (input: string) => {
       const result = await callCliAgent({
         command: agentConfig.command as string,
         input,
@@ -393,7 +393,7 @@ function createLocalAgentFunction(agentConfig: ParsedConfig["agent"], cwd: strin
     };
   }
 
-  return async (input) => {
+  return async (input: string) => {
     const sdkAgentFn = await loadSdkAgentFunction(agentConfig.module as string, cwd);
     const result = await callSdkAgent({
       input,
@@ -499,7 +499,7 @@ function toSummaryRow(
 }
 
 function printVerboseCaseResults(result: SuiteRunResult): void {
-  result.cases.forEach((caseResult) => {
+  result.cases.forEach((caseResult: EvalCaseResult) => {
     const icon = caseResult.passed ? chalk.green("✅") : chalk.red("❌");
     console.log(
       `  Case ${String(caseResult.caseIndex + 1)}/${String(result.totalCases)} ${icon} [${caseResult.score.toFixed(2)}]`
