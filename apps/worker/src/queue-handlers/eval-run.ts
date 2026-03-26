@@ -5,6 +5,7 @@ import {
   runGoldenDataset,
   runLlmJudge,
   runPerformance,
+  runToolUse,
 } from "@agentura/eval-runner";
 import type {
   AgentConfig,
@@ -125,6 +126,7 @@ function createAgentFunction(agentConfig: AgentConfig): AgentFunction {
         latencyMs: result.latencyMs,
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
+        tool_calls: result.tool_calls,
       };
     }
 
@@ -152,6 +154,7 @@ function createAgentFunction(agentConfig: AgentConfig): AgentFunction {
         latencyMs: result.latencyMs,
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
+        tool_calls: result.tool_calls,
       };
     }
 
@@ -430,11 +433,13 @@ Upgrade to Indie ($20/mo) for 5 repos at ${BILLING_PRICING_URL}
     const goldenSuites = config.evals.filter((suite) => suite.type === "golden_dataset");
     const llmJudgeSuites = config.evals.filter((suite) => suite.type === "llm_judge");
     const performanceSuites = config.evals.filter((suite) => suite.type === "performance");
+    const toolUseSuites = config.evals.filter((suite) => suite.type === "tool_use");
     const unsupportedSuites = config.evals.filter(
       (suite) =>
         suite.type !== "golden_dataset" &&
         suite.type !== "llm_judge" &&
-        suite.type !== "performance"
+        suite.type !== "performance" &&
+        suite.type !== "tool_use"
     );
 
     for (const suite of goldenSuites) {
@@ -504,6 +509,21 @@ Upgrade to Indie ($20/mo) for 5 repos at ${BILLING_PRICING_URL}
         },
         cases,
         suite.threshold
+      );
+
+      suiteResults.push(suiteResult);
+    }
+
+    for (const suite of toolUseSuites) {
+      const datasetPath = normalizeRepoPath(suite.dataset);
+      const cases = await fetchDatasetFile(octokit, owner, repo, branch, datasetPath);
+      const suiteResult = await runToolUse(
+        {
+          suiteName: suite.name,
+          threshold: suite.threshold,
+          agentFn,
+        },
+        cases
       );
 
       suiteResults.push(suiteResult);

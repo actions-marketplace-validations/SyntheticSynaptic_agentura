@@ -19,6 +19,7 @@ export async function callSdkAgent(params: SdkAgentCallInput): Promise<AgentCall
         result.latencyMs ?? Math.max(0, Math.round(performance.now() - startedAt)),
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
+      tool_calls: result.tool_calls,
     };
   } catch (error) {
     return {

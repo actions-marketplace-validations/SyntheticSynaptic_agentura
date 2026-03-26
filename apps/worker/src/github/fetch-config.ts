@@ -93,10 +93,15 @@ const performanceSuiteSchema = evalSuiteBaseSchema.extend({
   latency_threshold_ms: z.number().int().positive(),
 });
 
+const toolUseSuiteSchema = evalSuiteBaseSchema.extend({
+  type: z.literal("tool_use"),
+});
+
 const evalSuiteSchema = z.discriminatedUnion("type", [
   goldenDatasetSuiteSchema,
   llmJudgeSuiteSchema,
   performanceSuiteSchema,
+  toolUseSuiteSchema,
 ]);
 
 const ciSchema = z.object({
@@ -114,9 +119,23 @@ const agenturaConfigSchema = z.object({
   ci: ciSchema,
 });
 
+const jsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ])
+);
+
 const evalCaseSchema = z.object({
   input: z.string(),
   expected: z.string().optional(),
+  expected_tool: z.string().optional(),
+  expected_args: z.record(z.string(), jsonValueSchema).optional(),
+  expected_output: z.string().optional(),
 });
 
 function isContentFile(data: unknown): data is ContentFile {

@@ -1,5 +1,7 @@
 import { performance } from "node:perf_hooks";
 
+import type { JsonObject, JsonValue, ToolCall } from "@agentura/types";
+
 export interface HttpAgentCallInput {
   endpoint: string;
   input: string;
@@ -13,10 +15,11 @@ export interface AgentCallerResult {
   latencyMs: number;
   inputTokens?: number;
   outputTokens?: number;
+  tool_calls?: ToolCall[];
   errorMessage?: string;
 }
 
-function toInteger(value: unknown): number | undefined {
+export function toInteger(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) {
     return Math.floor(value);
   }
@@ -27,7 +30,57 @@ function toInteger(value: unknown): number | undefined {
   return undefined;
 }
 
-function getUsageValue(payload: unknown, key: string): number | undefined {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function toJsonValue(value: unknown): JsonValue | undefined {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean" ||
+    (typeof value === "number" && Number.isFinite(value))
+  ) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    const items: JsonValue[] = [];
+    for (const entry of value) {
+      const jsonValue = toJsonValue(entry);
+      if (jsonValue === undefined) {
+        return undefined;
+      }
+      items.push(jsonValue);
+    }
+    return items;
+  }
+
+  if (isRecord(value)) {
+    const record: JsonObject = {};
+    for (const [key, entry] of Object.entries(value)) {
+      const jsonValue = toJsonValue(entry);
+      if (jsonValue === undefined) {
+        return undefined;
+      }
+      record[key] = jsonValue;
+    }
+    return record;
+  }
+
+  return undefined;
+}
+
+function toJsonObject(value: unknown): JsonObject | undefined {
+  const jsonValue = toJsonValue(value);
+  if (!jsonValue || typeof jsonValue !== "object" || Array.isArray(jsonValue)) {
+    return undefined;
+  }
+
+  return jsonValue;
+}
+
+export function getUsageValue(payload: unknown, key: string): number | undefined {
   if (!payload || typeof payload !== "object") {
     return undefined;
   }
@@ -41,7 +94,7 @@ function getUsageValue(payload: unknown, key: string): number | undefined {
   return toInteger((usage as Record<string, unknown>)[key]);
 }
 
-function getOutputValue(payload: unknown): string | null {
+export function getOutputValue(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") {
     return null;
   }
@@ -54,6 +107,31 @@ function getOutputValue(payload: unknown): string | null {
     return record.result;
   }
   return null;
+}
+
+export function getToolCallsValue(payload: unknown): ToolCall[] | undefined {
+  if (!isRecord(payload) || !Array.isArray(payload.tool_calls)) {
+    return undefined;
+  }
+
+  const toolCalls = payload.tool_calls
+    .map((value): ToolCall | null => {
+      if (!isRecord(value) || typeof value.name !== "string") {
+        return null;
+      }
+
+      const args = toJsonObject(value.args);
+      const result = typeof value.result === "string" ? value.result : undefined;
+
+      return {
+        name: value.name,
+        ...(args ? { args } : {}),
+        ...(result !== undefined ? { result } : {}),
+      };
+    })
+    .filter((value): value is ToolCall => value !== null);
+
+  return toolCalls;
 }
 
 export async function callHttpAgent(params: HttpAgentCallInput): Promise<AgentCallerResult> {
@@ -111,6 +189,7 @@ export async function callHttpAgent(params: HttpAgentCallInput): Promise<AgentCa
       latencyMs,
       inputTokens,
       outputTokens,
+      tool_calls: getToolCallsValue(payload),
     };
   } catch (error) {
     const latencyMs = Math.max(0, Math.round(performance.now() - startedAt));

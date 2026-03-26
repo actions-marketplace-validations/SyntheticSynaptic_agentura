@@ -1,8 +1,8 @@
-{"input":"What is 13 * 17?","expected":"[tool:calculator]"}
-{"input":"What is (22 + 8) / 5?","expected":"[tool:calculator]"}
-{"input":"How much is 999 - 123?","expected":"[tool:calculator]"}
-{"input":"Multiply 18 by 7, then add 4.","expected":"[tool:calculator]"}
-{"input":"What is 84 / 6?","expected":"[tool:calculator]"}
-{"input":"Compute (5 + 7) * (9 - 4).","expected":"[tool:calculator]"}
-{"input":"What is 45 + 55 + 10?","expected":"[tool:calculator]"}
-{"input":"Calculate 3 * 3 * 3 * 3.","expected":"[tool:calculator]"}
+{"input":"What is 13 * 17?","expected_tool":"calculator","expected_args":{"expression":"13 * 17"},"expected_output":"221"}
+{"input":"What is (22 + 8) / 5?","expected_tool":"calculator","expected_args":{"expression":"(22 + 8) / 5"},"expected_output":"6"}
+{"input":"How much is 999 - 123?","expected_tool":"calculator","expected_args":{"expression":"999 - 123"},"expected_output":"876"}
+{"input":"Multiply 18 by 7, then add 4.","expected_tool":"calculator","expected_args":{"expression":"18 * 7 + 4"},"expected_output":"130"}
+{"input":"What is 84 / 6?","expected_tool":"calculator","expected_args":{"expression":"84 / 6"},"expected_output":"14"}
+{"input":"Compute (5 + 7) * (9 - 4).","expected_tool":"calculator","expected_args":{"expression":"(5 + 7) * (9 - 4)"},"expected_output":"60"}
+{"input":"What is 45 + 55 + 10?","expected_tool":"calculator","expected_args":{"expression":"45 + 55 + 10"},"expected_output":"110"}
+{"input":"Calculate 3 * 3 * 3 * 3.","expected_tool":"calculator","expected_args":{"expression":"3 * 3 * 3 * 3"},"expected_output":"81"}

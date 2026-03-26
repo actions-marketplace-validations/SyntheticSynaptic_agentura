@@ -1,3 +1,16 @@
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
+
+export interface JsonObject {
+  [key: string]: JsonValue;
+}
+
+export interface ToolCall {
+  name: string;
+  args?: JsonObject;
+  result?: string;
+}
+
 export interface AgenturaConfig {
   version: number;
   agent: AgentConfig;
@@ -15,7 +28,7 @@ export interface AgentConfig {
 
 export interface EvalSuiteConfig {
   name: string;
-  type: "golden_dataset" | "llm_judge" | "performance";
+  type: "golden_dataset" | "llm_judge" | "performance" | "tool_use";
   dataset: string;
   scorer?: "exact_match" | "semantic_similarity" | "contains";
   rubric?: string;
@@ -39,6 +52,9 @@ export interface EvalCase {
   input: string;
   context?: string;
   expected?: string;
+  expected_tool?: string;
+  expected_args?: JsonObject;
+  expected_output?: string;
 }
 
 export interface EvalCaseResult {
@@ -51,6 +67,15 @@ export interface EvalCaseResult {
   judgeReason?: string;
   agreement_rate?: number;
   judge_scores?: number[];
+  tool_called?: boolean;
+  args_match?: boolean;
+  output_match?: boolean;
+  expected_tool?: string;
+  expected_args?: JsonObject;
+  expected_output?: string;
+  actual_tool_name?: string | null;
+  actual_tool_args?: JsonObject | null;
+  tool_calls?: ToolCall[];
   latencyMs: number;
   inputTokens?: number;
   outputTokens?: number;
@@ -88,6 +113,7 @@ export interface AgentCallResult {
   latencyMs: number;
   inputTokens?: number;
   outputTokens?: number;
+  tool_calls?: ToolCall[];
 }
 
 export interface SuiteComparison {

@@ -12,13 +12,10 @@ evals:
     scorer: contains
     threshold: 0.80
 
-  # Current MVP runner does not inspect LangChain tool traces directly, so this
-  # suite infers calculator usage from the explicit [tool:calculator] output marker.
   - name: tool_use
-    type: golden_dataset
+    type: tool_use
     dataset: ./evals/tool_use.jsonl
-    scorer: contains
-    threshold: 1
+    threshold: 0.80
 
 ci:
   block_on_regression: true

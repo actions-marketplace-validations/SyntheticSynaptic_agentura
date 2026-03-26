@@ -257,6 +257,76 @@ ci:
   assert.match(output, /✓ case_3 \(similarity: 1\.00\) "What does the free plan include\?"/);
 });
 
+test("run --local --verbose prints tool_use breakdowns with expected and actual tool calls", async () => {
+  const directory = await createFixtureDir("agentura-cli-local-tool-use-verbose-");
+
+  await writeCommonConfigFiles(
+    directory,
+    `
+const chunks = [];
+process.stdin.on("data", (chunk) => chunks.push(chunk.toString()));
+process.stdin.on("end", () => {
+  const input = chunks.join("").trim();
+  if (input === "What is 15% of 340?") {
+    process.stdout.write(JSON.stringify({
+      output: "The answer is 51",
+      tool_calls: [
+        {
+          name: "calculator",
+          args: { expression: "340 * 0.15" },
+          result: "51"
+        }
+      ]
+    }));
+    return;
+  }
+
+  process.stdout.write(JSON.stringify({
+    output: "The answer is 340.15",
+    tool_calls: [
+      {
+        name: "calculator",
+        args: { expression: "340+0.15" },
+        result: "340.15"
+      }
+    ]
+  }));
+});
+`.trimStart(),
+    `
+{"id":"case_2","input":"What is 15% of 340?","expected_tool":"calculator","expected_args":{"expression":"340*0.15"},"expected_output":"51"}
+{"id":"case_5","input":"What is 15% of 340 but with the wrong args?","expected_tool":"calculator","expected_args":{"expression":"340*0.15"},"expected_output":"51"}
+`.trimStart(),
+    `
+version: 1
+agent:
+  type: cli
+  command: node ./agent.js
+  timeout_ms: 30000
+evals:
+  - name: tool_use
+    type: tool_use
+    dataset: ./evals/cases.jsonl
+    threshold: 0.8
+ci:
+  block_on_regression: true
+  regression_threshold: 0.05
+  compare_to: main
+  post_comment: true
+  fail_on_new_suite: false
+`.trimStart()
+  );
+
+  const result = await runCli(directory, ["run", "--local", "--verbose"]);
+  const output = stripAnsi(result.output);
+
+  assert.equal(result.code, 1);
+  assert.match(output, /✓ case_2 \(tool: ✓, args: ✓, output: ✓\) score: 1\.00/);
+  assert.match(output, /✗ case_5 \(tool: ✓, args: ✗, output: ✗\) score: 0\.50/);
+  assert.match(output, /expected tool: calculator\(expression="340\*0\.15"\)/);
+  assert.match(output, /actual tool:\s+calculator\(expression="340\+0\.15"\)/);
+});
+
 test("run --local creates a baseline snapshot on first run and writes non-TTY diff metadata", async () => {
   const directory = await createFixtureDir("agentura-cli-baseline-create-");
 

@@ -22,7 +22,7 @@ npx agentura@latest run --local
 ```
 
 ## What you will see
-The `accuracy` suite mixes plain-language questions with math problems, while `tool_use` checks whether the agent exposed the `[tool:calculator]` marker that signals the calculator tool actually ran.
+The `accuracy` suite mixes plain-language questions with math problems, while `tool_use` checks the structured `tool_calls` returned by the agent and verifies that the calculator tool was called with the expected expression.
 
 ## Without an API key
 This example's agent itself requires OPENAI_API_KEY because LangChain is calling OpenAI under the hood. The current suites do not need a separate judge key, but if you add `llm_judge` suites later you can use ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY.

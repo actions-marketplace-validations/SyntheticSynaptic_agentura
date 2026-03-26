@@ -14,6 +14,7 @@ export { scoreSemanticSimilarity } from "./scorers/semantic-similarity";
 export { runGoldenDataset } from "./strategies/golden-dataset";
 export { runLlmJudge } from "./strategies/llm-judge";
 export { runPerformance } from "./strategies/performance";
+export { runToolUse } from "./strategies/tool-use";
 
 export type { CliAgentCallInput } from "./agent-caller/cli-runner";
 export type { AgentCallerResult, HttpAgentCallInput } from "./agent-caller/http";
@@ -25,6 +26,7 @@ export type {
 } from "./strategies/golden-dataset";
 export type { LlmJudgeRunConfig } from "./strategies/llm-judge";
 export type { PerformanceRunConfig } from "./strategies/performance";
+export type { ToolUseRunConfig } from "./strategies/tool-use";
 export type {
   LlmJudgeClientFactories,
   LlmJudgeProvider,

@@ -16,9 +16,17 @@ import {
   runGoldenDataset,
   runLlmJudge,
   runPerformance,
+  runToolUse,
 } from "@agentura/eval-runner";
 import type { ResolvedLlmJudgeProvider } from "@agentura/eval-runner";
-import type { AgentFunction, EvalCase, EvalCaseResult, SuiteRunResult } from "@agentura/types";
+import type {
+  AgentFunction,
+  EvalCase,
+  EvalCaseResult,
+  JsonObject,
+  JsonValue,
+  SuiteRunResult,
+} from "@agentura/types";
 import { z } from "zod";
 
 import { loadDataset } from "./load-dataset";
@@ -200,6 +208,13 @@ const performanceSuiteSchema = z
     }
   });
 
+const toolUseSuiteSchema = z.object({
+  name: z.string().min(1),
+  type: z.literal("tool_use"),
+  dataset: z.string().min(1),
+  threshold: z.number().min(0).max(1),
+});
+
 const ciSchema = z
   .object({
     block_on_regression: z.boolean().default(false),
@@ -219,7 +234,9 @@ const ciSchema = z
 const configSchema = z.object({
   version: z.number().int().positive(),
   agent: agentSchema,
-  evals: z.array(z.union([goldenSuiteSchema, llmJudgeSuiteSchema, performanceSuiteSchema])),
+  evals: z.array(
+    z.union([goldenSuiteSchema, llmJudgeSuiteSchema, performanceSuiteSchema, toolUseSuiteSchema])
+  ),
   ci: ciSchema,
 });
 
@@ -371,6 +388,31 @@ function pluralize(count: number, singular: string, plural = `${singular}s`): st
 
 function quoteValue(value: string | null): string {
   return value === null ? "(no output)" : JSON.stringify(value);
+}
+
+function formatToolStatus(value: boolean | undefined): string {
+  if (value === undefined) {
+    return "n/a";
+  }
+
+  return value ? "✓" : "✗";
+}
+
+function formatJsonValue(value: JsonValue): string {
+  return JSON.stringify(value);
+}
+
+function formatToolCall(name: string | null | undefined, args: JsonObject | null | undefined): string {
+  if (!name) {
+    return "(none)";
+  }
+
+  const entries = Object.entries(args ?? {}).sort(([left], [right]) => left.localeCompare(right));
+  if (entries.length === 0) {
+    return `${name}()`;
+  }
+
+  return `${name}(${entries.map(([key, value]) => `${key}=${formatJsonValue(value)}`).join(", ")})`;
 }
 
 function getLocalStatePath(cwd: string, fileName: string): string {
@@ -813,6 +855,7 @@ function createLocalAgentFunction(agentConfig: ParsedConfig["agent"], cwd: strin
         latencyMs: result.latencyMs,
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
+        tool_calls: result.tool_calls,
       };
     };
   }
@@ -836,6 +879,7 @@ function createLocalAgentFunction(agentConfig: ParsedConfig["agent"], cwd: strin
         latencyMs: result.latencyMs,
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
+        tool_calls: result.tool_calls,
       };
     };
   }
@@ -856,6 +900,7 @@ function createLocalAgentFunction(agentConfig: ParsedConfig["agent"], cwd: strin
       latencyMs: result.latencyMs,
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
+      tool_calls: result.tool_calls,
     };
   };
 }
@@ -902,6 +947,20 @@ async function runSuite(
         },
         cases,
         rubric
+      ),
+    };
+  }
+
+  if (suite.type === "tool_use") {
+    return {
+      cases,
+      result: await runToolUse(
+        {
+          suiteName: suite.name,
+          threshold: suite.threshold,
+          agentFn,
+        },
+        cases
       ),
     };
   }
@@ -990,6 +1049,42 @@ function printVerboseCaseResults(
   cases: EvalCase[],
   result: SuiteRunResult
 ): void {
+  if (suite.type === "tool_use") {
+    result.cases.forEach((caseResult: EvalCaseResult) => {
+      const testCase = cases[caseResult.caseIndex] ?? {
+        id: undefined,
+        input: caseResult.input,
+        expected_tool: caseResult.expected_tool,
+        expected_args: caseResult.expected_args,
+        expected_output: caseResult.expected_output,
+      };
+      const caseId = createCaseId(testCase);
+      const icon = caseResult.passed ? chalk.green("✓") : chalk.red("✗");
+      const breakdown = [
+        `tool: ${formatToolStatus(caseResult.tool_called)}`,
+        `args: ${formatToolStatus(caseResult.args_match)}`,
+      ];
+
+      if (caseResult.output_match !== undefined) {
+        breakdown.push(`output: ${formatToolStatus(caseResult.output_match)}`);
+      }
+
+      console.log(
+        `  ${icon} ${caseId} (${breakdown.join(", ")}) score: ${caseResult.score.toFixed(2)}`
+      );
+
+      if (!caseResult.passed) {
+        console.log(
+          `    expected tool: ${formatToolCall(caseResult.expected_tool, caseResult.expected_args)}`
+        );
+        console.log(
+          `    actual tool:   ${formatToolCall(caseResult.actual_tool_name, caseResult.actual_tool_args)}`
+        );
+      }
+    });
+    return;
+  }
+
   const isSemanticSimilaritySuite =
     suite.type === "golden_dataset" && suite.scorer === "semantic_similarity";
 

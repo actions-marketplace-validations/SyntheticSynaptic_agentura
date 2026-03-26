@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { performance } from "node:perf_hooks";
 
+import { getOutputValue, getToolCallsValue, getUsageValue } from "./http";
 import type { AgentCallerResult } from "./http";
 
 export interface CliAgentCallInput {
@@ -70,8 +71,35 @@ export function callCliAgent(params: CliAgentCallInput): Promise<AgentCallerResu
         return;
       }
 
+      const trimmedOutput = stdout.trim();
+      let parsedPayload: unknown;
+
+      if (trimmedOutput.startsWith("{") || trimmedOutput.startsWith("[")) {
+        try {
+          parsedPayload = JSON.parse(trimmedOutput) as unknown;
+        } catch {
+          parsedPayload = undefined;
+        }
+      }
+
+      if (parsedPayload && typeof parsedPayload === "object" && !Array.isArray(parsedPayload)) {
+        const output = getOutputValue(parsedPayload);
+        const toolCalls = getToolCallsValue(parsedPayload);
+
+        if (output !== null || toolCalls !== undefined) {
+          resolve({
+            output: output ?? trimmedOutput,
+            latencyMs,
+            inputTokens: getUsageValue(parsedPayload, "input_tokens"),
+            outputTokens: getUsageValue(parsedPayload, "output_tokens"),
+            tool_calls: toolCalls,
+          });
+          return;
+        }
+      }
+
       resolve({
-        output: stdout.trim(),
+        output: trimmedOutput,
         latencyMs,
       });
     });

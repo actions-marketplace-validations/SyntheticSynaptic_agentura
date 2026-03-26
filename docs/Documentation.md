@@ -1781,6 +1781,51 @@ Milestone 18 — run manual `agentura generate` end-to-end checks and, after rev
 **Next session:**
 Milestone 18 — run the pending manual `agentura generate` end-to-end checks and missing-config validation flow.
 
+## Session — 2026-03-26 11:44 UTC
+
+**Milestone:** D — Tool-Call Eval Strategy
+**Status:** COMPLETE
+
+**Files created:**
+- `packages/eval-runner/src/strategies/tool-use.ts` — added the new `tool_use` eval strategy with weighted tool/args/output scoring
+- `packages/eval-runner/src/strategies/tool-use.test.ts` — added strategy coverage for full matches, redistributed weights, and missing-tool-call behavior
+
+**Files modified:**
+- `packages/types/src/index.ts` — extended shared config, case, result, JSON, and tool-call types for `tool_use`
+- `packages/eval-runner/src/index.ts` — exported `runToolUse` and its config type
+- `packages/eval-runner/src/agent-caller/http.ts` — preserved structured `tool_calls` from HTTP agent responses
+- `packages/eval-runner/src/agent-caller/http.test.ts` — added coverage for structured HTTP tool-call parsing
+- `packages/eval-runner/src/agent-caller/cli-runner.ts` — taught CLI agents to parse structured JSON responses while preserving plain-text compatibility
+- `packages/eval-runner/src/agent-caller/sdk.ts` — passed through `tool_calls` from SDK agent functions
+- `packages/cli/src/lib/load-dataset.ts` — added dataset parsing and validation for `expected_tool`, `expected_args`, and `expected_output`
+- `packages/cli/src/lib/local-run.ts` — threaded `tool_use` through config parsing, agent execution, verbose output, and local result handling
+- `packages/cli/src/commands/run.test.ts` — added end-to-end CLI coverage for verbose `tool_use` breakdowns
+- `apps/worker/src/github/fetch-config.ts` — added worker-side config and dataset support for `tool_use`
+- `apps/worker/src/queue-handlers/eval-run.ts` — added worker execution support for `tool_use` suites and structured tool-call agent results
+- `examples/langchain-agent/agent.ts` — returned structured `tool_calls` from LangChain intermediate steps
+- `examples/langchain-agent/agentura.yaml` — switched the calculator behavior suite to `type: tool_use`
+- `examples/langchain-agent/evals/tool_use.jsonl` — converted the example dataset to the new `tool_use` schema
+- `examples/langchain-agent/README.md` — updated the example docs to describe structured tool-call validation
+- `docs/Documentation.md` — appended this session entry
+
+**Decisions made:**
+- Kept `tool_use` scoring deterministic and local: tool names must match exactly, arg names must match exactly, arg values are tolerant to formatting differences such as whitespace while still failing semantic operator changes, and output matching uses substring containment so `expected_output: "51"` still passes for agent text like `"The answer is 51"`.
+- Preserved backward compatibility for agent callers by only parsing structured CLI/HTTP payloads when they expose `output`, `result`, or `tool_calls`; plain-text agent responses continue to work unchanged for existing suites.
+
+**Validation results:**
+- `pnpm --filter @agentura/eval-runner type-check`: PASS
+- `pnpm --filter @agentura/eval-runner test`: PASS
+- `pnpm --filter agentura test`: PASS
+- `pnpm type-check`: PASS
+- `pnpm test`: PASS
+
+**Issues found:**
+- Worker dataset validation initially used the wrong `z.record(...)` signature for the installed Zod version; updated it to the compatible keyed form and reran the full workspace checks.
+- The CLI package reads built workspace artifacts at runtime during its tests, so rebuilding `@agentura/eval-runner` was necessary while iterating locally before the final root test run.
+
+**Next session:**
+Await the next requested milestone.
+
 ## Session — 2026-03-26 11:00 UTC
 
 **Milestone:** B — Semantic Similarity Scorer
