@@ -455,7 +455,9 @@ Upgrade to Indie ($20/mo) for 5 repos at ${BILLING_PRICING_URL}
         continue;
       }
 
-      console.log(`Running llm_judge suite: ${suite.name}`);
+      console.log(
+        `Running llm_judge suite: ${suite.name} with judge_model=llama-3.1-8b-instant across ${String(suite.runs ?? 1)} runs`
+      );
       const rubricPath = normalizeRepoPath(suite.rubric);
       const datasetPath = normalizeRepoPath(suite.dataset);
 
@@ -465,6 +467,7 @@ Upgrade to Indie ($20/mo) for 5 repos at ${BILLING_PRICING_URL}
         {
           suiteName: suite.name,
           threshold: suite.threshold,
+          runs: suite.runs,
           agentFn,
           judge: {
             provider: "groq",

@@ -20,6 +20,7 @@ export interface EvalSuiteConfig {
   scorer?: "exact_match" | "semantic_similarity" | "contains";
   rubric?: string;
   judge_model?: string;
+  runs?: number;
   threshold: number;
   max_p95_ms?: number;
   max_cost_per_call_usd?: number;
@@ -48,6 +49,8 @@ export interface EvalCaseResult {
   score: number;
   passed: boolean;
   judgeReason?: string;
+  agreement_rate?: number;
+  judge_scores?: number[];
   latencyMs: number;
   inputTokens?: number;
   outputTokens?: number;
@@ -58,8 +61,10 @@ export interface SuiteRunResult {
   suiteName: string;
   strategy: string;
   judge_model?: string;
+  judge_runs?: number;
   score: number;
   threshold: number;
+  agreement_rate?: number;
   passed: boolean;
   totalCases: number;
   passedCases: number;

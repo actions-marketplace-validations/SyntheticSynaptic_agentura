@@ -85,6 +85,7 @@ const llmJudgeSuiteSchema = evalSuiteBaseSchema.extend({
   type: z.literal("llm_judge"),
   rubric: z.string().min(1),
   judge_model: z.string().min(1).optional(),
+  runs: z.number().int().positive().default(1),
 });
 
 const performanceSuiteSchema = evalSuiteBaseSchema.extend({

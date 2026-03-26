@@ -34,6 +34,7 @@ interface LocalSuiteSummaryRow {
   suiteName: string;
   scoreText: string;
   thresholdText: string;
+  agreementText?: string | null;
   statusText: string;
   passed: boolean;
   skipped: boolean;
@@ -62,6 +63,7 @@ interface BaselineCaseSnapshot {
   actual: string | null;
   passed: boolean;
   score: number;
+  scores?: number[];
 }
 
 interface BaselineSuiteSnapshot {
@@ -175,6 +177,7 @@ const llmJudgeSuiteSchema = z.object({
   dataset: z.string().min(1),
   rubric: z.string().min(1),
   judge_model: z.string().min(1).optional(),
+  runs: z.number().int().positive().default(1),
   threshold: z.number().min(0).max(1),
 });
 
@@ -227,6 +230,7 @@ const baselineCaseSnapshotSchema = z.object({
   actual: z.string().nullable(),
   passed: z.boolean(),
   score: z.number().min(0).max(1),
+  scores: z.array(z.number().min(0).max(1)).optional(),
 });
 
 const baselineSuiteSnapshotSchema = z.object({
@@ -383,6 +387,11 @@ function createCaseId(testCase: EvalCase): string {
 }
 
 function toBaselineCaseSnapshot(testCase: EvalCase, caseResult: EvalCaseResult): BaselineCaseSnapshot {
+  const scores =
+    caseResult.judge_scores && caseResult.judge_scores.length > 1
+      ? [...caseResult.judge_scores]
+      : undefined;
+
   return {
     id: createCaseId(testCase),
     input: testCase.input,
@@ -390,6 +399,7 @@ function toBaselineCaseSnapshot(testCase: EvalCase, caseResult: EvalCaseResult):
     actual: caseResult.output ?? null,
     passed: caseResult.passed,
     score: caseResult.score,
+    ...(scores ? { scores } : {}),
   };
 }
 
@@ -677,33 +687,55 @@ async function getGitCommitSha(cwd: string): Promise<string | null> {
 }
 
 function renderTable(rows: LocalSuiteSummaryRow[]): string {
-  const headers = ["Suite", "Score", "Threshold", "Status"];
-  const widths = [
-    Math.max(headers[0].length, ...rows.map((row) => row.suiteName.length)),
-    Math.max(headers[1].length, ...rows.map((row) => row.scoreText.length)),
-    Math.max(headers[2].length, ...rows.map((row) => row.thresholdText.length)),
-    Math.max(
-      headers[3].length,
-      ...rows.map((row) => row.statusText.replace(/\u001B\[[0-9;]*m/g, "").length)
-    ),
-  ];
+  const showAgreementColumn = rows.some(
+    (row) => typeof row.agreementText === "string" && row.agreementText.length > 0
+  );
+  const headers = showAgreementColumn
+    ? ["Suite", "Score", "Threshold", "Agreement", "Status"]
+    : ["Suite", "Score", "Threshold", "Status"];
+  const widths = headers.map((header, columnIndex) => {
+    const values = rows.map((row) => {
+      if (columnIndex === 0) {
+        return row.suiteName;
+      }
+
+      if (columnIndex === 1) {
+        return row.scoreText;
+      }
+
+      if (columnIndex === 2) {
+        return row.thresholdText;
+      }
+
+      if (showAgreementColumn && columnIndex === 3) {
+        return row.agreementText ?? "n/a";
+      }
+
+      return row.statusText.replace(/\u001B\[[0-9;]*m/g, "");
+    });
+
+    return Math.max(header.length, ...values.map((value) => value.length));
+  });
 
   const border = (left: string, middle: string, right: string) =>
     `${left}${widths.map((width) => "─".repeat(width + 2)).join(middle)}${right}`;
 
   const renderRow = (cells: string[]) =>
-    `│ ${pad(cells[0], widths[0])} │ ${pad(cells[1], widths[1])} │ ${pad(cells[2], widths[2])} │ ${pad(cells[3], widths[3])} │`;
+    `│ ${cells.map((cell, index) => pad(cell, widths[index] ?? cell.length)).join(" │ ")} │`;
 
   const innerWidth = border("┌", "┬", "┐").length - 2;
+  const rowCells = rows.map((row) =>
+    showAgreementColumn
+      ? [row.suiteName, row.scoreText, row.thresholdText, row.agreementText ?? "n/a", row.statusText]
+      : [row.suiteName, row.scoreText, row.thresholdText, row.statusText]
+  );
   const lines = [
     border("┌", "┬", "┐"),
     `│ ${pad("Agentura Eval Results", innerWidth - 2)} │`,
     border("├", "┬", "┤"),
     renderRow(headers),
     border("├", "┼", "┤"),
-    ...rows.map((row) =>
-      renderRow([row.suiteName, row.scoreText, row.thresholdText, row.statusText])
-    ),
+    ...rowCells.map((cells) => renderRow(cells)),
     border("└", "┴", "┘"),
   ];
 
@@ -864,6 +896,7 @@ async function runSuite(
         {
           suiteName: suite.name,
           threshold: suite.threshold,
+          runs: suite.runs,
           agentFn,
           judge,
         },
@@ -897,6 +930,7 @@ function toSummaryRow(
       suiteName: result.suiteName,
       scoreText: "skipped",
       thresholdText: "n/a",
+      agreementText: null,
       statusText: formatStatusText(false, true),
       passed: true,
       skipped: true,
@@ -909,6 +943,7 @@ function toSummaryRow(
       suiteName: suite.name,
       scoreText: buildPerformanceScoreText(result),
       thresholdText: buildPerformanceThresholdText(suite),
+      agreementText: null,
       statusText: formatStatusText(passed, false),
       passed,
       skipped: false,
@@ -919,10 +954,35 @@ function toSummaryRow(
     suiteName: result.suiteName,
     scoreText: result.score.toFixed(2),
     thresholdText: suite.threshold.toFixed(2),
+    agreementText:
+      suite.type === "llm_judge" && (suite.runs ?? 1) > 1 && typeof result.agreement_rate === "number"
+        ? result.agreement_rate.toFixed(2)
+        : null,
     statusText: formatStatusText(result.passed, false),
     passed: result.passed,
     skipped: false,
   };
+}
+
+function collectLowAgreementWarnings(
+  results: Array<Pick<SuiteRunResult, "suiteName" | "strategy" | "agreement_rate">>
+): string[] {
+  const warnings: string[] = [];
+
+  for (const result of results) {
+    if (result.strategy !== "llm_judge" || typeof result.agreement_rate !== "number") {
+      continue;
+    }
+
+    if (result.agreement_rate >= 0.7) {
+      continue;
+    }
+
+    warnings.push(`⚠ ${result.suiteName}: low judge agreement (${result.agreement_rate.toFixed(2)}).`);
+    warnings.push("  Results may be unreliable. Consider revising your rubric.");
+  }
+
+  return warnings;
 }
 
 function printVerboseCaseResults(
@@ -998,6 +1058,14 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
       result: suiteExecution.result,
     });
 
+    if (suite.type === "llm_judge" && (suite.runs ?? 1) > 1) {
+      console.log(
+        chalk.gray(
+          `    judge_model: ${suiteExecution.result.judge_model ?? "unknown"} confirmed across ${String(suiteExecution.result.judge_runs ?? suite.runs ?? 1)} runs`
+        )
+      );
+    }
+
     if (options.verbose) {
       printVerboseCaseResults(suite, suiteExecution.cases, suiteExecution.result);
     }
@@ -1006,6 +1074,14 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
   console.log("");
   console.log(renderTable(completedRows));
   console.log("");
+
+  const lowAgreementWarnings = collectLowAgreementWarnings(
+    completedSuites.map((suiteRun) => suiteRun.result)
+  );
+  if (lowAgreementWarnings.length > 0) {
+    lowAgreementWarnings.forEach((warning) => console.log(chalk.yellow(warning)));
+    console.log("");
+  }
 
   const currentCommit = await getGitCommitSha(cwd);
   const currentSnapshot = buildBaselineSnapshot(completedSuites, currentCommit);
@@ -1077,3 +1153,10 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
 
   return exitCode;
 }
+
+export const __testing = {
+  collectLowAgreementWarnings,
+  renderTable,
+  toBaselineCaseSnapshot,
+  toSummaryRow,
+};

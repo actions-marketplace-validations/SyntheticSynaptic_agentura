@@ -4,6 +4,7 @@ import path from "node:path";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { __testing } from "../lib/local-run";
 
 const CLI_ENTRY = path.resolve(__dirname, "..", "..", "dist", "index.js");
 const TEMP_DIRS: string[] = [];
@@ -84,6 +85,76 @@ after(async () => {
       await rm(directory, { recursive: true, force: true });
     })
   );
+});
+
+test("llm_judge summary rows include agreement text and render an Agreement column when runs > 1", () => {
+  const row = __testing.toSummaryRow(
+    {
+      name: "quality",
+      type: "llm_judge",
+      dataset: "./evals/quality.jsonl",
+      rubric: "./evals/rubric.md",
+      runs: 3,
+      threshold: 0.7,
+    },
+    {
+      suiteName: "quality",
+      strategy: "llm_judge",
+      judge_model: "claude-3-5-haiku-20241022",
+      judge_runs: 3,
+      score: 0.84,
+      threshold: 0.7,
+      agreement_rate: 0.89,
+      passed: true,
+      totalCases: 1,
+      passedCases: 1,
+      durationMs: 25,
+      estimatedCostUsd: 0,
+      cases: [],
+    }
+  );
+
+  assert.equal(row.agreementText, "0.89");
+
+  const table = __testing.renderTable([row]);
+  assert.match(table, /Agreement/);
+  assert.match(table, /0\.89/);
+});
+
+test("low agreement warnings are generated for llm_judge suites below the reliability threshold", () => {
+  const warnings = __testing.collectLowAgreementWarnings([
+    {
+      suiteName: "quality",
+      strategy: "llm_judge",
+      agreement_rate: 0.61,
+    },
+  ]);
+
+  assert.deepEqual(warnings, [
+    "⚠ quality: low judge agreement (0.61).",
+    "  Results may be unreliable. Consider revising your rubric.",
+  ]);
+});
+
+test("baseline snapshots preserve all judge scores for multi-run llm_judge cases", () => {
+  const snapshot = __testing.toBaselineCaseSnapshot(
+    {
+      id: "case_2",
+      input: "How good is this answer?",
+    },
+    {
+      caseIndex: 0,
+      input: "How good is this answer?",
+      output: "Helpful answer",
+      score: 0.84,
+      passed: true,
+      agreement_rate: 2 / 3,
+      judge_scores: [0.91, 0.45, 0.88],
+      latencyMs: 12,
+    }
+  );
+
+  assert.deepEqual(snapshot.scores, [0.91, 0.45, 0.88]);
 });
 
 test("run --local executes a local golden_dataset suite without login", async () => {

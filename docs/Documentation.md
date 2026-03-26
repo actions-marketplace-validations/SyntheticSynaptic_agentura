@@ -1822,6 +1822,40 @@ Milestone 18 — run the pending manual `agentura generate` end-to-end checks an
 **Next session:**
 Milestone 18 — resume the pending manual `agentura generate` end-to-end checks and missing-config validation flow, or extend semantic similarity baseline reporting into CI surfaces if requested.
 
+## Session — 2026-03-26 11:27 UTC
+
+**Milestone:** C — LLM Judge Reliability
+**Status:** COMPLETE
+
+**Files created:**
+- `packages/eval-runner/src/strategies/llm-judge.test.ts` — added strategy coverage for multi-run majority-vote scoring and agreement-rate behavior
+
+**Files modified:**
+- `packages/types/src/index.ts` — added `runs` config support plus agreement/judge-run score fields on eval results
+- `packages/eval-runner/src/strategies/llm-judge.ts` — implemented multi-run judge aggregation, majority-vote pass/fail, averaged scores, per-case judge score storage, and suite/case agreement rates
+- `packages/cli/src/lib/local-run.ts` — accepted `runs` in `agentura.yaml`, rendered dynamic agreement column, emitted low-agreement warnings, logged multi-run judge model usage, and stored per-run judge scores in local baselines
+- `packages/cli/src/commands/run.test.ts` — added coverage for agreement-column rendering, low-agreement warnings, and baseline score storage helpers
+- `apps/worker/src/github/fetch-config.ts` — accepted `runs` in worker-side config validation
+- `apps/worker/src/queue-handlers/eval-run.ts` — passed `runs` through to shared `runLlmJudge` and logged the configured judge model/run count
+- `docs/Documentation.md` — appended this session entry
+
+**Decisions made:**
+- Used majority vote only for per-case pass/fail while keeping suite-level pass/fail tied to the averaged suite score, preserving current threshold semantics for overall suite results.
+- Computed suite agreement as the average of per-case agreement rates so the terminal summary can report one reliability number per llm_judge suite.
+- Stored multi-run judge variance in local baselines as `scores` arrays per case without changing existing diff logic, which remains keyed on input and pass/fail flips.
+
+**Validation results:**
+- `pnpm --filter @agentura/eval-runner test`: PASS
+- `pnpm --filter agentura test`: PASS
+- `pnpm type-check`: PASS
+- `pnpm test`: PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Milestone 18 — resume the pending manual `agentura generate` end-to-end checks and missing-config validation flow, or surface llm_judge agreement data in PR comments/dashboard if requested.
+
 ## Session — 2026-03-26 10:42 UTC
 
 **Milestone:** A — Regression Diff Output
