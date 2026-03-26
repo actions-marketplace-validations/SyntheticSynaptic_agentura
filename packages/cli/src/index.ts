@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -47,6 +46,7 @@ program
   .command("run")
   .description("Run evals locally")
   .option("--suite <name>", "Run only a specific suite")
+  .option("--local", "Run fully offline without Agentura auth or cloud APIs")
   .option("--verbose", "Show individual case results")
   .action(runCommand);
 

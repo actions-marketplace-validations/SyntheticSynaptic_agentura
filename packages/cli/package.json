@@ -12,16 +12,13 @@
     "access": "public"
   },
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
   "scripts": {
     "dev": "tsx watch src/index.ts run",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsup",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@agentura/eval-runner": "workspace:^",
-    "@agentura/types": "workspace:^",
     "chalk": "^4.1.2",
     "commander": "^12.1.0",
     "dotenv": "^16.0.0",
@@ -34,6 +31,7 @@
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
+    "tsup": "^8.5.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   }

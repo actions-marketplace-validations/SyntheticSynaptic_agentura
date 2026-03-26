@@ -1497,3 +1497,38 @@ Milestone 18 — run manual `agentura generate` E2E checks and finalize mileston
 
 **Next session:**
 Milestone 18 — execute manual `agentura generate` E2E checks and close remaining milestone validation items.
+
+## Session — 2026-03-26 06:44 UTC
+
+**Milestone:** 18 — CLI: agentura generate (user-requested CLI packaging task)
+**Status:** IN PROGRESS
+
+**Files created:**
+- `packages/cli/tsup.config.ts` — added `tsup` bundle config that emits a single CommonJS CLI entry and inlines workspace packages
+- `packages/cli/src/lib/local-run.ts` — added the offline/local eval execution path, spec-aware config parsing, suite execution helpers, and boxed summary table rendering
+- `packages/cli/src/commands/run.test.ts` — added CLI integration tests for `run --local` golden-dataset success and performance-suite failure cases
+
+**Files modified:**
+- `packages/cli/package.json` — switched CLI build to `tsup`, removed bundled workspace packages from runtime dependencies, and removed the stale `types` output pointer
+- `packages/cli/src/commands/run.ts` — replaced the old dynamic-import runner with the new local-run wrapper
+- `packages/cli/src/index.ts` — removed the source shebang and added the `run --local` flag
+- `pnpm-lock.yaml` — recorded the requested `tsup` dev dependency and workspace manifest changes
+- `docs/Documentation.md` — appended this session handoff
+
+**Decisions made:**
+- Kept `run --local` as the explicit offline path and routed the current CLI `run` implementation through that shared local execution helper, because the CLI still has no separate cloud-backed run mode.
+- Accepted both the current legacy performance key (`latency_threshold_ms`) and the product-spec key (`max_p95_ms`) inside the new local-run parser, so the packaged CLI can handle the documented config shape without forcing a broader repo refactor.
+
+**Validation results:**
+- `pnpm exec tsx --test src/commands/run.test.ts`: PASS
+- `pnpm build` (in `packages/cli`): PASS
+- `node packages/cli/dist/index.js --help`: PASS
+- Bundled output check (`packages/cli/dist/index.js` exists and starts with `#!/usr/bin/env node`): PASS
+- Bundled CLI smoke test (`node packages/cli/dist/index.js run --local` in a temp fixture): PASS
+- `pnpm run type-check`: PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Return to Milestone 18 manual `agentura generate` E2E checks after reviewing the CLI packaging changes and, if approved, prepare the CLI changes for manual npm publish.
