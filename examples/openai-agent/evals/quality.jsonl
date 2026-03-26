@@ -1,0 +1,5 @@
+{"input":"I'm furious that my team keeps getting duplicate notifications. Fix this now.","context":"The user is frustrated and wants a calm, helpful support response with practical next steps."}
+{"input":"We're a nonprofit with six teammates. Which plan should we start with?","context":"Recommend the right plan using only the known AcmeBot pricing facts."}
+{"input":"My GitHub integration stopped syncing after I rotated our token. What should I do?","context":"Explain a likely recovery path without inventing unsupported product features."}
+{"input":"Can you make AcmeBot send tasks by fax every morning?","context":"Decline politely when the request is outside the product's documented capabilities."}
+{"input":"We need SSO next quarter. How should I position that to my manager?","context":"Answer like a thoughtful support rep who explains the Enterprise plan clearly and professionally."}

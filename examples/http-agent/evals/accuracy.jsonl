@@ -1,0 +1,10 @@
+{"input":"What is the DocuRoute API base URL?","expected":"https://api.docuroute.dev/v1"}
+{"input":"How do I authenticate with the API?","expected":"bearer tokens"}
+{"input":"How does pagination work?","expected":"cursor"}
+{"input":"What is the default rate limit?","expected":"120 requests per minute"}
+{"input":"How are webhooks signed?","expected":"X-DocuRoute-Signature"}
+{"input":"Which SDKs are available?","expected":"JavaScript and Python"}
+{"input":"How should I retry 429 responses?","expected":"exponential backoff"}
+{"input":"What does a sandbox key look like?","expected":"dr_sandbox_"}
+{"input":"What does a successful DELETE request return?","expected":"204"}
+{"input":"What is DocuRoute?","expected":"REST API documentation platform"}

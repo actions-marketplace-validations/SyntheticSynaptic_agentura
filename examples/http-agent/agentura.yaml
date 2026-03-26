@@ -1,0 +1,20 @@
+version: 1
+
+agent:
+  type: http
+  endpoint: http://localhost:3458/invoke
+  timeout_ms: 30000
+
+evals:
+  - name: docs_accuracy
+    type: golden_dataset
+    dataset: ./evals/accuracy.jsonl
+    scorer: contains
+    threshold: 0.90
+
+ci:
+  block_on_regression: true
+  regression_threshold: 0.05
+  compare_to: main
+  post_comment: true
+  fail_on_new_suite: false

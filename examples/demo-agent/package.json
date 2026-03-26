@@ -1,0 +1,7 @@
+{
+  "name": "demo-agent-example",
+  "private": true,
+  "scripts": {
+    "agent": "node agent.js"
+  }
+}

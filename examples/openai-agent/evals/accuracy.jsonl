@@ -1,0 +1,12 @@
+{"input":"What does the AcmeBot free plan include?","expected":"3 projects"}
+{"input":"How many collaborators can I invite on the free plan?","expected":"5 collaborators"}
+{"input":"Does AcmeBot integrate with GitHub?","expected":"GitHub"}
+{"input":"Can AcmeBot sync with Google Calendar?","expected":"Google Calendar"}
+{"input":"How long can I recover a deleted task?","expected":"30 days"}
+{"input":"Which plan includes custom fields?","expected":"Pro"}
+{"input":"Can I import tasks from CSV?","expected":"CSV"}
+{"input":"Which plan includes SSO?","expected":"Enterprise"}
+{"input":"What is your refund policy?","expected":"30-day money-back guarantee"}
+{"input":"Can I self-host AcmeBot on-premises?","expected":"on-prem appliance"}
+{"input":"Is AcmeBot HIPAA compliant?","expected":"HIPAA compliant"}
+{"input":"Can you send me your SOC 2 report?","expected":"SOC 2 report available on request"}

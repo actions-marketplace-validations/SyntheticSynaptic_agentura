@@ -1,0 +1,44 @@
+version: 1
+
+agent:
+  type: cli
+  command: node ./agent.js
+  timeout_ms: 30000
+
+evals:
+  - name: plans
+    type: golden_dataset
+    dataset: ./evals/plans.jsonl
+    scorer: contains
+    threshold: 1
+
+  - name: integrations
+    type: golden_dataset
+    dataset: ./evals/integrations.jsonl
+    scorer: contains
+    threshold: 1
+
+  - name: recovery
+    type: golden_dataset
+    dataset: ./evals/recovery.jsonl
+    scorer: contains
+    threshold: 1
+
+  - name: refunds
+    type: golden_dataset
+    dataset: ./evals/refunds.jsonl
+    scorer: contains
+    threshold: 1
+
+  - name: compliance
+    type: golden_dataset
+    dataset: ./evals/compliance.jsonl
+    scorer: contains
+    threshold: 1
+
+ci:
+  block_on_regression: true
+  regression_threshold: 0.05
+  compare_to: main
+  post_comment: true
+  fail_on_new_suite: false

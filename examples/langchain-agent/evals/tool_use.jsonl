@@ -1,0 +1,8 @@
+{"input":"What is 13 * 17?","expected":"[tool:calculator]"}
+{"input":"What is (22 + 8) / 5?","expected":"[tool:calculator]"}
+{"input":"How much is 999 - 123?","expected":"[tool:calculator]"}
+{"input":"Multiply 18 by 7, then add 4.","expected":"[tool:calculator]"}
+{"input":"What is 84 / 6?","expected":"[tool:calculator]"}
+{"input":"Compute (5 + 7) * (9 - 4).","expected":"[tool:calculator]"}
+{"input":"What is 45 + 55 + 10?","expected":"[tool:calculator]"}
+{"input":"Calculate 3 * 3 * 3 * 3.","expected":"[tool:calculator]"}

@@ -19,12 +19,15 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
+    "@google/genai": "^1.46.0",
     "chalk": "^4.1.2",
     "commander": "^12.1.0",
     "dotenv": "^16.0.0",
     "groq-sdk": "^0.37.0",
     "js-yaml": "^4.1.0",
     "open": "^8.4.2",
+    "openai": "^6.33.0",
     "p-limit": "3",
     "zod": "^3.24.1"
   },

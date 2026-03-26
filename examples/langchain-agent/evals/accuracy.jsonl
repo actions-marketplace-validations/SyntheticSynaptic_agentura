@@ -1,0 +1,10 @@
+{"input":"What can you help me with?","expected":"calculator"}
+{"input":"What is 14 + 29?","expected":"43"}
+{"input":"If I have 12 tasks and finish 5, how many are left?","expected":"7"}
+{"input":"Multiply 17 by 6.","expected":"102"}
+{"input":"What is 81 / 9?","expected":"9"}
+{"input":"Give me a short explanation of when to use the calculator tool.","expected":"calculator"}
+{"input":"What is (9 + 3) * 4?","expected":"48"}
+{"input":"How much is 125 - 37?","expected":"88"}
+{"input":"Compute 7 * 8 + 5.","expected":"61"}
+{"input":"What is 144 / 12 + 3?","expected":"15"}

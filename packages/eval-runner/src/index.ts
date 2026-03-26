@@ -4,7 +4,11 @@ export { callSdkAgent } from "./agent-caller/sdk";
 
 export { scoreContains } from "./scorers/contains";
 export { scoreExactMatch } from "./scorers/exact-match";
-export { scoreLlmJudge } from "./scorers/llm-judge-scorer";
+export {
+  NO_LLM_JUDGE_API_KEY_WARNING,
+  resolveLlmJudgeProvider,
+  scoreLlmJudge,
+} from "./scorers/llm-judge-scorer";
 export { scoreSemanticSimilarity } from "./scorers/semantic-similarity";
 
 export { runGoldenDataset } from "./strategies/golden-dataset";
@@ -21,3 +25,8 @@ export type {
 } from "./strategies/golden-dataset";
 export type { LlmJudgeRunConfig } from "./strategies/llm-judge";
 export type { PerformanceRunConfig } from "./strategies/performance";
+export type {
+  LlmJudgeClientFactories,
+  LlmJudgeProvider,
+  ResolvedLlmJudgeProvider,
+} from "./scorers/llm-judge-scorer";

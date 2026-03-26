@@ -8,14 +8,16 @@ import {
   callCliAgent,
   callHttpAgent,
   callSdkAgent,
+  NO_LLM_JUDGE_API_KEY_WARNING,
+  resolveLlmJudgeProvider,
   runGoldenDataset,
   runLlmJudge,
   runPerformance,
 } from "@agentura/eval-runner";
+import type { ResolvedLlmJudgeProvider } from "@agentura/eval-runner";
 import type { AgentConfig, AgentFunction, SuiteRunResult } from "@agentura/types";
 import { z } from "zod";
 
-import { loadConfig } from "./config";
 import { loadDataset } from "./load-dataset";
 import { loadRubric } from "./load-rubric";
 
@@ -104,15 +106,13 @@ const performanceSuiteSchema = z
     dataset: z.string().min(1),
     max_p95_ms: z.number().int().positive().optional(),
     max_cost_per_call_usd: z.number().positive().optional(),
-    latency_threshold_ms: z.number().int().positive().optional(),
     threshold: z.number().min(0).max(1).optional(),
   })
   .superRefine((value, ctx) => {
-    if (!value.max_p95_ms && !value.max_cost_per_call_usd && !value.latency_threshold_ms) {
+    if (!value.max_p95_ms && !value.max_cost_per_call_usd) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message:
-          "performance suites require max_p95_ms, max_cost_per_call_usd, or latency_threshold_ms",
+        message: "performance suites require max_p95_ms or max_cost_per_call_usd",
         path: ["max_p95_ms"],
       });
     }
@@ -207,7 +207,7 @@ function parsePerformanceMetadata(result: SuiteRunResult): PerformanceSuiteMetad
 }
 
 function getPerformanceThresholdMs(suite: ParsedPerformanceSuite): number | null {
-  return suite.max_p95_ms ?? suite.latency_threshold_ms ?? null;
+  return suite.max_p95_ms ?? null;
 }
 
 function buildPerformanceScoreText(result: SuiteRunResult): string {
@@ -413,19 +413,10 @@ function createLocalAgentFunction(agentConfig: ParsedConfig["agent"], cwd: strin
   };
 }
 
-async function resolveJudgeApiKey(): Promise<string | null> {
-  const envApiKey = process.env.GROQ_API_KEY?.trim();
-  if (envApiKey) {
-    return envApiKey;
-  }
-
-  const config = await loadConfig();
-  return config?.groqApiKey?.trim() || null;
-}
-
 async function runSuite(
   suite: ParsedSuite,
-  agentFn: AgentFunction
+  agentFn: AgentFunction,
+  judge: ResolvedLlmJudgeProvider | null
 ): Promise<SuiteRunResult | SkippedSuiteResult> {
   const cases = await loadDataset(suite.dataset);
 
@@ -437,12 +428,11 @@ async function runSuite(
   }
 
   if (suite.type === "llm_judge") {
-    const apiKey = await resolveJudgeApiKey();
-    if (!apiKey) {
+    if (!judge) {
       return {
         suiteName: suite.name,
         strategy: suite.type,
-        reason: `Skipping llm_judge suite ${suite.name}: set GROQ_API_KEY to enable judge scoring`,
+        reason: NO_LLM_JUDGE_API_KEY_WARNING,
       };
     }
 
@@ -452,10 +442,10 @@ async function runSuite(
         suiteName: suite.name,
         threshold: suite.threshold,
         agentFn,
+        judge,
       },
       cases,
-      rubric,
-      apiKey
+      rubric
     );
   }
 
@@ -525,6 +515,9 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
   const suites = options.suite
     ? config.evals.filter((suite) => suite.name === options.suite)
     : config.evals;
+  const judge = suites.some((suite) => suite.type === "llm_judge")
+    ? resolveLlmJudgeProvider()
+    : null;
 
   if (suites.length === 0) {
     throw new Error(`No suite found named '${options.suite ?? ""}'`);
@@ -534,10 +527,13 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
   const skippedReasons: string[] = [];
 
   console.log(chalk.gray("Running evals locally..."));
+  if (judge) {
+    console.log(chalk.gray(`llm_judge: using ${judge.provider} (${judge.model})`));
+  }
 
   for (const suite of suites) {
     console.log(chalk.gray(`  Running suite: ${suite.name} (${suite.type})...`));
-    const suiteResult = await runSuite(suite, agentFn);
+    const suiteResult = await runSuite(suite, agentFn, judge);
     const summaryRow = toSummaryRow(suite, suiteResult);
     completedRows.push(summaryRow);
 
@@ -562,7 +558,7 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
   );
 
   if (skippedReasons.length > 0) {
-    skippedReasons.forEach((reason) => console.log(chalk.yellow(reason)));
+    [...new Set(skippedReasons)].forEach((reason) => console.log(chalk.yellow(reason)));
   }
 
   console.log(chalk.gray(`Completed in ${formatDurationMs(performance.now() - startedAt)}.`));

@@ -1,0 +1,13 @@
+{
+  "name": "http-agent-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx agent.ts"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.3"
+  }
+}

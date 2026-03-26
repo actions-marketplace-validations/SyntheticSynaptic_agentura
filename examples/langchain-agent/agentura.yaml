@@ -1,0 +1,28 @@
+version: 1
+
+agent:
+  type: http
+  endpoint: http://localhost:3457/invoke
+  timeout_ms: 30000
+
+evals:
+  - name: accuracy
+    type: golden_dataset
+    dataset: ./evals/accuracy.jsonl
+    scorer: contains
+    threshold: 0.80
+
+  # Current MVP runner does not inspect LangChain tool traces directly, so this
+  # suite infers calculator usage from the explicit [tool:calculator] output marker.
+  - name: tool_use
+    type: golden_dataset
+    dataset: ./evals/tool_use.jsonl
+    scorer: contains
+    threshold: 1
+
+ci:
+  block_on_regression: true
+  regression_threshold: 0.05
+  compare_to: main
+  post_comment: true
+  fail_on_new_suite: false

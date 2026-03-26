@@ -1532,3 +1532,74 @@ Milestone 18 — execute manual `agentura generate` E2E checks and close remaini
 
 **Next session:**
 Return to Milestone 18 manual `agentura generate` E2E checks after reviewing the CLI packaging changes and, if approved, prepare the CLI changes for manual npm publish.
+
+## Session — 2026-03-26 08:10 UTC
+
+**Milestone:** 18 — CLI + local judge provider detection + example assets
+**Status:** IN PROGRESS
+
+**Files created:**
+- `examples/demo-agent/package.json` — added a tiny standalone mock demo package entry
+- `examples/demo-agent/agent.js` — added a hardcoded local CLI agent with three correct answers and two intentional misses
+- `examples/demo-agent/agentura.yaml` — added a five-suite secret-free demo config for the recording flow
+- `examples/demo-agent/evals/*.jsonl` — added five one-case golden datasets to make the local results table visually mixed
+- `examples/demo-agent/README.md` — documented the mock demo flow and why it intentionally fails two suites
+- `examples/openai-agent/package.json` — added the standalone OpenAI example package
+- `examples/openai-agent/agent.ts` — added a simple HTTP customer-support bot for AcmeBot on port 3456
+- `examples/openai-agent/agentura.yaml` — added accuracy, quality, and performance eval suites using the current config shape
+- `examples/openai-agent/evals/accuracy.jsonl` — added 12 obvious pass/fail golden cases
+- `examples/openai-agent/evals/quality.jsonl` — added five `llm_judge` cases with `context`
+- `examples/openai-agent/evals/quality_rubric.md` — added the compact quality rubric
+- `examples/openai-agent/README.md` — documented setup, local runs, and judge-key expectations
+- `examples/langchain-agent/package.json` — added the standalone LangChain calculator example package
+- `examples/langchain-agent/agent.ts` — added a ReAct-style LangChain HTTP agent on port 3457 with one calculator tool
+- `examples/langchain-agent/agentura.yaml` — added accuracy and tool-use eval suites, including the output-marker limitation note
+- `examples/langchain-agent/evals/accuracy.jsonl` — added 10 mixed language and math cases
+- `examples/langchain-agent/evals/tool_use.jsonl` — added eight calculator-tool inference cases
+- `examples/langchain-agent/README.md` — documented setup, local runs, and the tool-use approximation
+- `examples/http-agent/package.json` — added the standalone framework-agnostic HTTP example package
+- `examples/http-agent/agent.ts` — added an Express-backed rule-based docs agent on port 3458
+- `examples/http-agent/agentura.yaml` — added a single golden-dataset eval suite
+- `examples/http-agent/evals/accuracy.jsonl` — added 10 REST-docs golden cases
+- `examples/http-agent/README.md` — documented the framework-agnostic pattern and swap-in guidance
+- `docs/demo.tape` — added the VHS script for the secret-free demo recording
+- `docs/README.md` — documented how to regenerate the GIF and noted that the GIF is pending first run
+- `docs/demo.gif` — added the empty placeholder artifact
+
+**Files modified:**
+- `packages/eval-runner/package.json` — added the approved Anthropic, OpenAI, and Gemini SDK dependencies
+- `packages/eval-runner/src/scorers/llm-judge-scorer.ts` — added provider auto-detection, provider-specific SDK calls, exact no-key warning constant, and optional judge context support
+- `packages/eval-runner/src/scorers/llm-judge-scorer.test.ts` — added provider-priority, warning-text, and provider-wiring coverage
+- `packages/eval-runner/src/strategies/llm-judge.ts` — updated the shared llm_judge strategy to accept resolved judge config and emit `judge_model`
+- `packages/eval-runner/src/index.ts` — re-exported the new judge resolver, warning constant, and related types
+- `packages/types/src/index.ts` — added `context` to `EvalCase` and `judge_model` to `SuiteRunResult`
+- `packages/cli/package.json` — added the approved Anthropic, OpenAI, and Gemini SDK runtime dependencies
+- `packages/cli/src/lib/load-dataset.ts` — added optional `context` parsing for `llm_judge` datasets
+- `packages/cli/src/lib/local-run.ts` — switched local `llm_judge` mode to provider auto-detection, exact warning text, startup provider logging, deduped skip messages, and strict `max_p95_ms` handling
+- `packages/cli/src/index.ts` — replaced the hardcoded version string with `package.json`-driven version loading
+- `packages/cli/src/commands/run.test.ts` — added the exact no-key warning test and made the integration tests execute the built CLI binary directly
+- `apps/worker/src/queue-handlers/eval-run.ts` — updated the worker’s `runLlmJudge` callsite to the new shared signature so root type-check passes
+- `pnpm-lock.yaml` — recorded the approved dependency additions
+- `docs/Documentation.md` — appended this session summary
+
+**Decisions made:**
+- Used environment-based judge auto-detection only for local/offline `llm_judge` runs — this matches the task request and keeps zero-auth local usage predictable.
+- Added optional `context` support to eval datasets — the OpenAI quality example explicitly needed `{"input","context"}` lines, so the judge prompt now uses that field instead of dropping it.
+- Recorded the GIF with `examples/demo-agent` instead of the OpenAI example — the demo must be secret-free and one-command, which conflicts with the real OpenAI server example.
+- Kept the LangChain tool-use example as a golden-dataset approximation — the current MVP runner does not inspect tool traces, so the example uses an explicit `[tool:calculator]` output marker and documents that limitation.
+
+**Validation results:**
+- `pnpm run test` (in `packages/eval-runner`): PASS
+- `pnpm build` (in `packages/cli`): PASS
+- `pnpm exec tsx --test src/commands/run.test.ts` (in `packages/cli`): PASS
+- `head -n 1 packages/cli/dist/index.js`: PASS (`#!/usr/bin/env node`)
+- `node packages/cli/dist/index.js --version`: PASS (`0.1.1`)
+- `node packages/cli/dist/index.js --help`: PASS
+- `node ../../packages/cli/dist/index.js run --local` (in `examples/demo-agent`): PASS (expected mixed 3-pass / 2-fail demo output, exit code 1)
+- `pnpm run type-check`: PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Milestone 18 — run manual `agentura generate` end-to-end checks and, after review, prepare the CLI for human-led npm publish.

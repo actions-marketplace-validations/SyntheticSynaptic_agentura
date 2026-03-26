@@ -12,6 +12,7 @@ function toEvalCase(value: unknown, filePath: string, lineNumber: number): EvalC
 
   const record = value as Record<string, unknown>;
   const input = typeof record.input === "string" ? record.input : null;
+  const context = record.context;
   const expected = record.expected;
 
   if (!input) {
@@ -26,8 +27,15 @@ function toEvalCase(value: unknown, filePath: string, lineNumber: number): EvalC
     );
   }
 
+  if (context !== undefined && typeof context !== "string") {
+    throw new Error(
+      `Invalid dataset entry at ${filePath}:${String(lineNumber)} — context must be a string`
+    );
+  }
+
   return {
     input,
+    context: typeof context === "string" ? context : undefined,
     expected: typeof expected === "string" ? expected : undefined,
   };
 }

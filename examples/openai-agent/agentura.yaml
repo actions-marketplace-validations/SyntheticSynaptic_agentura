@@ -1,0 +1,32 @@
+version: 1
+
+agent:
+  type: http
+  endpoint: http://localhost:3456/invoke
+  timeout_ms: 30000
+
+evals:
+  - name: accuracy
+    type: golden_dataset
+    dataset: ./evals/accuracy.jsonl
+    scorer: contains
+    threshold: 0.65
+
+  - name: quality
+    type: llm_judge
+    dataset: ./evals/quality.jsonl
+    rubric: ./evals/quality_rubric.md
+    threshold: 0.80
+
+  - name: performance
+    type: performance
+    dataset: ./evals/accuracy.jsonl
+    max_p95_ms: 3000
+    max_cost_per_call_usd: 0.01
+
+ci:
+  block_on_regression: true
+  regression_threshold: 0.05
+  compare_to: main
+  post_comment: true
+  fail_on_new_suite: false

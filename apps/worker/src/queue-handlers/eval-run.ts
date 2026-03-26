@@ -466,10 +466,14 @@ Upgrade to Indie ($20/mo) for 5 repos at ${BILLING_PRICING_URL}
           suiteName: suite.name,
           threshold: suite.threshold,
           agentFn,
+          judge: {
+            provider: "groq",
+            model: "llama-3.1-8b-instant",
+            apiKey: groqApiKey,
+          },
         },
         cases,
-        rubric,
-        groqApiKey
+        rubric
       );
 
       suiteResults.push(suiteResult);

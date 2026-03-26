@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import { createRequire } from "node:module";
 
 dotenv.config();
 
@@ -9,6 +10,8 @@ import { initCommand } from "./commands/init";
 import { loginCommand } from "./commands/login";
 import { runCommand } from "./commands/run";
 
+const require = createRequire(__filename);
+const pkg = require("../package.json") as { version: string };
 const program = new Command();
 
 program
@@ -21,7 +24,7 @@ program
       "  run       Run evals locally\n" +
       "  login     Authenticate with Agentura"
   )
-  .version("0.1.1");
+  .version(pkg.version);
 
 program
   .command("generate")

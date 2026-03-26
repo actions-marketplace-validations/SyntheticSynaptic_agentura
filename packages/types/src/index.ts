@@ -35,6 +35,7 @@ export interface CIConfig {
 
 export interface EvalCase {
   input: string;
+  context?: string;
   expected?: string;
 }
 
@@ -55,6 +56,7 @@ export interface EvalCaseResult {
 export interface SuiteRunResult {
   suiteName: string;
   strategy: string;
+  judge_model?: string;
   score: number;
   threshold: number;
   passed: boolean;

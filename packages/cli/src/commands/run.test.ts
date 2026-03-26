@@ -4,11 +4,8 @@ import path from "node:path";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { createRequire } from "node:module";
 
-const CLI_ENTRY = path.resolve(__dirname, "..", "index.ts");
-const require = createRequire(__filename);
-const TSX_ENTRY = require.resolve("tsx/cli");
+const CLI_ENTRY = path.resolve(__dirname, "..", "..", "dist", "index.js");
 const TEMP_DIRS: string[] = [];
 
 function stripAnsi(value: string): string {
@@ -33,11 +30,25 @@ async function writeCommonConfigFiles(
   await writeFile(path.join(directory, "agentura.yaml"), config, "utf-8");
 }
 
-function runCli(cwd: string, args: string[]): Promise<{ code: number; output: string }> {
+function runCli(
+  cwd: string,
+  args: string[],
+  envOverrides: Record<string, string | null> = {}
+): Promise<{ code: number; output: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [TSX_ENTRY, CLI_ENTRY, ...args], {
+    const env = { ...process.env } as Record<string, string>;
+    for (const [key, value] of Object.entries(envOverrides)) {
+      if (value === null) {
+        delete env[key];
+        continue;
+      }
+
+      env[key] = value;
+    }
+
+    const child = spawn(process.execPath, [CLI_ENTRY, ...args], {
       cwd,
-      env: process.env,
+      env,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -161,4 +172,59 @@ ci:
   assert.match(output, /latency/);
   assert.match(output, /p95/i);
   assert.match(output, /FAIL/);
+});
+
+test("run --local prints the exact llm_judge warning when no judge key is present", async () => {
+  const directory = await createFixtureDir("agentura-cli-local-judge-skip-");
+
+  await writeCommonConfigFiles(
+    directory,
+    `
+const chunks = [];
+process.stdin.on("data", (chunk) => chunks.push(chunk.toString()));
+process.stdin.on("end", () => {
+  process.stdout.write("ok");
+});
+`.trimStart(),
+    `{"input":"How do I reset my AcmeBot password?"}\n`,
+    `
+version: 1
+agent:
+  type: cli
+  command: node ./agent.js
+  timeout_ms: 30000
+evals:
+  - name: quality
+    type: llm_judge
+    dataset: ./evals/cases.jsonl
+    rubric: ./evals/rubric.md
+    threshold: 0.80
+ci:
+  block_on_regression: true
+  regression_threshold: 0.05
+  compare_to: main
+  post_comment: true
+  fail_on_new_suite: false
+`.trimStart()
+  );
+
+  await writeFile(
+    path.join(directory, "evals", "rubric.md"),
+    "Score helpfulness, accuracy, and tone from 0 to 1.",
+    "utf-8"
+  );
+
+  const result = await runCli(directory, ["run", "--local"], {
+    ANTHROPIC_API_KEY: null,
+    OPENAI_API_KEY: null,
+    GEMINI_API_KEY: null,
+    GROQ_API_KEY: null,
+  });
+  const output = stripAnsi(result.output);
+
+  assert.equal(result.code, 0);
+  assert.match(
+    output,
+    /llm_judge suites skipped: set ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY to run them/
+  );
 });

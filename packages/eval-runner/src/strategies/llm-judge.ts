@@ -3,12 +3,13 @@ import { setTimeout as delay } from "node:timers/promises";
 import pLimit from "p-limit";
 
 import type { AgentFunction, EvalCase, EvalCaseResult, SuiteRunResult } from "@agentura/types";
-import { scoreLlmJudge } from "../scorers/llm-judge-scorer";
+import { scoreLlmJudge, type ResolvedLlmJudgeProvider } from "../scorers/llm-judge-scorer";
 
 export interface LlmJudgeRunConfig {
   suiteName: string;
   threshold: number;
   agentFn: AgentFunction;
+  judge: ResolvedLlmJudgeProvider;
 }
 
 const CASE_CONCURRENCY = 5;
@@ -17,8 +18,7 @@ const CASE_EVAL_DELAY_MS = 500;
 export async function runLlmJudge(
   config: LlmJudgeRunConfig,
   cases: EvalCase[],
-  rubric: string,
-  apiKey: string
+  rubric: string
 ): Promise<SuiteRunResult> {
   const startedAt = performance.now();
   const limit = pLimit(CASE_CONCURRENCY);
@@ -39,7 +39,8 @@ export async function runLlmJudge(
             testCase.input,
             agentResult.output,
             rubric,
-            apiKey
+            config.judge,
+            testCase.context
           );
 
           return {
@@ -81,6 +82,7 @@ export async function runLlmJudge(
   return {
     suiteName: config.suiteName,
     strategy: "llm_judge",
+    judge_model: config.judge.model,
     score,
     threshold: config.threshold,
     passed: score >= config.threshold,
