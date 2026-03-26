@@ -2075,3 +2075,28 @@ Milestone F — continue the eval system follow-up work, or extend multi-turn co
 
 **Next session:**
 Milestone G — continue the eval-system follow-up work, or extend audit metadata into cloud-run persistence if requested.
+
+## Session — 2026-03-26 12:44 UTC
+
+**Milestone:** 18 — README update for v0.2.0
+**Status:** COMPLETE
+
+**Files created:**
+- None
+
+**Files modified:**
+- `README.md` — replaced the project README with the v0.2.0 launch copy, updated eval strategy coverage, audit-mode guidance, and product comparison table
+- `docs/Documentation.md` — appended this session entry
+
+**Decisions made:**
+- Kept the visible README content aligned with the provided copy while stripping trailing whitespace introduced by the wrapped markdown so repository diff checks pass cleanly.
+
+**Validation results:**
+- `git diff --check`: PASS
+- `pnpm type-check`: PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Milestone 18 — resume the pending `agentura generate` end-to-end validation work, or continue with the next requested documentation and packaging updates.
