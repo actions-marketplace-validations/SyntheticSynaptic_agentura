@@ -51,6 +51,7 @@ program
   .option("--suite <name>", "Run only a specific suite")
   .option("--local", "Run fully offline without Agentura auth or cloud APIs")
   .option("--reset-baseline", "Overwrite the saved local baseline with this run")
+  .option("--locked", "Fail if any dataset changed since the saved baseline")
   .option("--verbose", "Show individual case results")
   .action(runCommand);
 

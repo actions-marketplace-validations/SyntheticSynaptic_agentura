@@ -2045,3 +2045,33 @@ Milestone 18 — run the pending manual `agentura generate` end-to-end checks an
 
 **Next session:**
 Milestone F — continue the eval system follow-up work, or extend multi-turn coverage into additional examples and cloud execution paths if requested.
+
+## Session — 2026-03-26 12:19 UTC
+
+**Milestone:** F — Dataset Versioning and Audit Trail
+**Status:** COMPLETE
+
+**Files created:**
+- `CHANGELOG.md` — documented the new locked-mode workflow and manifest output for regulated environments
+
+**Files modified:**
+- `packages/cli/src/lib/local-run.ts` — added dataset fingerprinting, baseline dataset metadata, dataset-change warnings, locked-mode enforcement, and per-run manifest writing
+- `packages/cli/src/index.ts` — added the `agentura run --locked` flag
+- `packages/cli/src/commands/run.ts` — threaded the locked-mode option into local run execution
+- `packages/cli/src/commands/run.test.ts` — added coverage for dataset hash persistence, dataset-change warnings, locked-mode failures, and manifest output
+- `docs/Documentation.md` — appended this session entry
+
+**Decisions made:**
+- Stored dataset hashes, paths, and case counts directly in `.agentura/baseline.json` so score comparisons can detect content drift without introducing a second baseline metadata source.
+- Wrote `.agentura/manifest.json` on every run as an overwrite-only audit artifact keyed by run UUID, commit, CLI version, and per-suite dataset metadata to keep the evidence model simple and deterministic.
+
+**Validation results:**
+- `pnpm --filter agentura test`: PASS
+- `pnpm type-check`: PASS
+- `pnpm test`: PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Milestone G — continue the eval-system follow-up work, or extend audit metadata into cloud-run persistence if requested.

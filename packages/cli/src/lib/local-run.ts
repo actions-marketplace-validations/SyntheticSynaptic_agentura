@@ -1,6 +1,7 @@
 import { execFile as execFileCallback } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
+import { createRequire } from "node:module";
 import { performance } from "node:perf_hooks";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -37,6 +38,7 @@ export interface LocalRunCommandOptions {
   suite?: string;
   verbose?: boolean;
   resetBaseline?: boolean;
+  locked?: boolean;
 }
 
 interface LocalSuiteSummaryRow {
@@ -63,6 +65,9 @@ interface CompletedSuiteRun {
   suite: ParsedSuite;
   cases: EvalCase[];
   result: SuiteRunResult;
+  datasetHash: string;
+  datasetPath: string;
+  caseCount: number;
 }
 
 interface BaselineCaseSnapshot {
@@ -77,6 +82,9 @@ interface BaselineCaseSnapshot {
 
 interface BaselineSuiteSnapshot {
   score: number;
+  dataset_hash?: string;
+  dataset_path?: string;
+  case_count?: number;
   cases: BaselineCaseSnapshot[];
 }
 
@@ -129,13 +137,59 @@ interface DiffReport {
   suites: Record<string, DiffSuiteReport>;
 }
 
+interface EvalRunManifestSuite {
+  name: string;
+  strategy: string;
+  scorer: string | null;
+  dataset_hash: string;
+  case_count: number;
+  score: number;
+  passed: boolean;
+  judge_model: string | null;
+}
+
+interface EvalRunManifest {
+  run_id: string;
+  timestamp: string;
+  commit: string | null;
+  cli_version: string;
+  suites: EvalRunManifestSuite[];
+}
+
+interface DatasetChange {
+  suiteName: string;
+  baselineHash: string;
+  baselineCaseCount: number;
+  currentHash: string;
+  currentCaseCount: number;
+}
+
 type GoldenScorer = "exact_match" | "contains" | "semantic_similarity";
 
 const execFile = promisify(execFileCallback);
 const LOCAL_STATE_DIR = ".agentura";
 const BASELINE_FILE_NAME = "baseline.json";
 const DIFF_FILE_NAME = "diff.json";
+const MANIFEST_FILE_NAME = "manifest.json";
 const BASELINE_VERSION = 1 as const;
+const require = createRequire(__filename);
+
+function getCliVersion(): string {
+  for (const candidate of ["../package.json", "../../package.json"]) {
+    try {
+      const manifest = require(candidate) as { version?: unknown };
+      if (typeof manifest.version === "string" && manifest.version.length > 0) {
+        return manifest.version;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return "0.0.0";
+}
+
+const CLI_VERSION = getCliVersion();
 
 const agentSchema = z
   .object({
@@ -253,6 +307,9 @@ const baselineCaseSnapshotSchema = z.object({
 
 const baselineSuiteSnapshotSchema = z.object({
   score: z.number().min(0).max(1),
+  dataset_hash: z.string().min(1).optional(),
+  dataset_path: z.string().min(1).optional(),
+  case_count: z.number().int().nonnegative().optional(),
   cases: z.array(baselineCaseSnapshotSchema),
 });
 
@@ -459,6 +516,9 @@ function buildBaselineSnapshot(
       suiteRun.result.suiteName,
       {
         score: suiteRun.result.score,
+        dataset_hash: suiteRun.datasetHash,
+        dataset_path: suiteRun.datasetPath,
+        case_count: suiteRun.caseCount,
         cases: suiteRun.result.cases.map((caseResult) =>
           toBaselineCaseSnapshot(suiteRun.cases[caseResult.caseIndex] ?? {
             input: caseResult.input,
@@ -640,6 +700,11 @@ async function writeDiffReport(cwd: string, report: DiffReport): Promise<void> {
   await writeJsonFile(getLocalStatePath(cwd, DIFF_FILE_NAME), report);
 }
 
+async function writeEvalRunManifest(cwd: string, manifest: EvalRunManifest): Promise<void> {
+  await ensureLocalStateDir(cwd);
+  await writeJsonFile(getLocalStatePath(cwd, MANIFEST_FILE_NAME), manifest);
+}
+
 function flattenDiffChanges(
   report: DiffReport,
   field: keyof Pick<DiffSuiteReport, "regressions" | "improvements" | "newCases" | "missingCases">
@@ -731,6 +796,103 @@ async function getGitCommitSha(cwd: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+async function fingerprintDataset(datasetPath: string, cwd: string): Promise<string> {
+  const absolutePath = path.resolve(cwd, datasetPath);
+  let raw: string;
+
+  try {
+    raw = await fs.readFile(absolutePath, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new Error(`Dataset file not found: ${datasetPath}`);
+    }
+
+    throw error;
+  }
+
+  return `sha256:${createHash("sha256").update(raw).digest("hex")}`;
+}
+
+function isSuitePassed(suite: ParsedSuite, result: SuiteRunResult): boolean {
+  if (suite.type === "performance") {
+    return evaluatePerformancePass(suite, result);
+  }
+
+  return result.passed;
+}
+
+function buildEvalRunManifest(
+  completedSuites: CompletedSuiteRun[],
+  commit: string | null
+): EvalRunManifest {
+  return {
+    run_id: randomUUID(),
+    timestamp: new Date().toISOString(),
+    commit,
+    cli_version: CLI_VERSION,
+    suites: completedSuites.map((suiteRun) => ({
+      name: suiteRun.suite.name,
+      strategy: suiteRun.suite.type,
+      scorer:
+        suiteRun.suite.type === "golden_dataset"
+          ? suiteRun.suite.scorer
+          : null,
+      dataset_hash: suiteRun.datasetHash,
+      case_count: suiteRun.caseCount,
+      score: suiteRun.result.score,
+      passed: isSuitePassed(suiteRun.suite, suiteRun.result),
+      judge_model:
+        suiteRun.suite.type === "llm_judge" ? suiteRun.result.judge_model ?? null : null,
+    })),
+  };
+}
+
+function collectDatasetChanges(
+  baseline: BaselineSnapshot,
+  current: BaselineSnapshot
+): DatasetChange[] {
+  return Object.entries(current.suites).flatMap(([suiteName, currentSuite]) => {
+    const baselineSuite = baseline.suites[suiteName];
+    if (
+      !baselineSuite?.dataset_hash ||
+      baselineSuite.dataset_hash === currentSuite.dataset_hash ||
+      typeof baselineSuite.case_count !== "number"
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        suiteName,
+        baselineHash: baselineSuite.dataset_hash,
+        baselineCaseCount: baselineSuite.case_count,
+        currentHash: currentSuite.dataset_hash ?? "",
+        currentCaseCount: currentSuite.case_count ?? 0,
+      },
+    ];
+  });
+}
+
+function printDatasetChangeWarnings(changes: DatasetChange[]): void {
+  if (changes.length === 0) {
+    return;
+  }
+
+  changes.forEach((change) => {
+    console.log(chalk.yellow(`⚠ ${change.suiteName}: dataset changed since baseline`));
+    console.log(
+      chalk.yellow(
+        `  (was ${String(change.baselineCaseCount)} ${pluralize(change.baselineCaseCount, "case")} ${change.baselineHash}, now ${String(change.currentCaseCount)} ${pluralize(change.currentCaseCount, "case")} ${change.currentHash})`
+      )
+    );
+    console.log(chalk.yellow("  Score comparison to baseline may not be valid."));
+    console.log(
+      chalk.yellow("  Run with --reset-baseline to accept new dataset as baseline.")
+    );
+  });
+  console.log("");
 }
 
 function renderTable(rows: LocalSuiteSummaryRow[]): string {
@@ -916,13 +1078,26 @@ function createLocalAgentFunction(agentConfig: ParsedConfig["agent"], cwd: strin
 async function runSuite(
   suite: ParsedSuite,
   agentFn: AgentFunction,
-  judge: ResolvedLlmJudgeProvider | null
-): Promise<{ cases: EvalCase[]; result: SuiteRunResult | SkippedSuiteResult }> {
+  judge: ResolvedLlmJudgeProvider | null,
+  cwd: string
+): Promise<{
+  cases: EvalCase[];
+  datasetHash: string;
+  datasetPath: string;
+  caseCount: number;
+  result: SuiteRunResult | SkippedSuiteResult;
+}> {
   const cases = await loadDataset(suite.dataset);
+  const datasetHash = await fingerprintDataset(suite.dataset, cwd);
+  const datasetPath = suite.dataset;
+  const caseCount = cases.length;
 
   if (suite.type === "golden_dataset") {
     return {
       cases,
+      datasetHash,
+      datasetPath,
+      caseCount,
       result: await runGoldenDataset(cases, agentFn, suite.scorer as GoldenScorer, {
         suiteName: suite.name,
         threshold: suite.threshold,
@@ -934,6 +1109,9 @@ async function runSuite(
     if (!judge) {
       return {
         cases,
+        datasetHash,
+        datasetPath,
+        caseCount,
         result: {
           suiteName: suite.name,
           strategy: suite.type,
@@ -945,6 +1123,9 @@ async function runSuite(
     const rubric = await loadRubric(suite.rubric);
     return {
       cases,
+      datasetHash,
+      datasetPath,
+      caseCount,
       result: await runLlmJudge(
         {
           suiteName: suite.name,
@@ -962,6 +1143,9 @@ async function runSuite(
   if (suite.type === "tool_use") {
     return {
       cases,
+      datasetHash,
+      datasetPath,
+      caseCount,
       result: await runToolUse(
         {
           suiteName: suite.name,
@@ -976,6 +1160,9 @@ async function runSuite(
   const latencyThresholdMs = getPerformanceThresholdMs(suite);
   return {
     cases,
+    datasetHash,
+    datasetPath,
+    caseCount,
     result: await runPerformance(
       {
         suiteName: suite.name,
@@ -1005,7 +1192,7 @@ function toSummaryRow(
   }
 
   if (suite.type === "performance") {
-    const passed = evaluatePerformancePass(suite, result);
+    const passed = isSuitePassed(suite, result);
     return {
       suiteName: suite.name,
       scoreText: buildPerformanceScoreText(result),
@@ -1157,7 +1344,7 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
 
   for (const suite of suites) {
     console.log(chalk.gray(`  Running suite: ${suite.name} (${suite.type})...`));
-    const suiteExecution = await runSuite(suite, agentFn, judge);
+    const suiteExecution = await runSuite(suite, agentFn, judge, cwd);
     const summaryRow = toSummaryRow(suite, suiteExecution.result);
     completedRows.push(summaryRow);
 
@@ -1170,6 +1357,9 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
       suite,
       cases: suiteExecution.cases,
       result: suiteExecution.result,
+      datasetHash: suiteExecution.datasetHash,
+      datasetPath: suiteExecution.datasetPath,
+      caseCount: suiteExecution.caseCount,
     });
 
     if (suite.type === "llm_judge" && (suite.runs ?? 1) > 1) {
@@ -1199,9 +1389,13 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
 
   const currentCommit = await getGitCommitSha(cwd);
   const currentSnapshot = buildBaselineSnapshot(completedSuites, currentCommit);
+  const manifest = buildEvalRunManifest(completedSuites, currentCommit);
   const baselineReadResult = options.resetBaseline
     ? { snapshot: null, error: null }
     : await readBaselineSnapshot(cwd);
+  const datasetChanges = baselineReadResult.snapshot
+    ? collectDatasetChanges(baselineReadResult.snapshot, currentSnapshot)
+    : [];
   let diffReport: DiffReport = {
     version: BASELINE_VERSION,
     timestamp: new Date().toISOString(),
@@ -1246,11 +1440,22 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
       false,
       baselineReadResult.error
     );
+    printDatasetChangeWarnings(datasetChanges);
     printDiffReport(diffReport);
   }
 
+  await writeEvalRunManifest(cwd, manifest);
+
   const failedSuites = completedRows.filter((row) => !row.passed && !row.skipped).length;
-  const exitCode = failedSuites > 0 ? 1 : 0;
+  const lockedDatasetChanges = options.locked ? datasetChanges.length : 0;
+  const exitCode = failedSuites > 0 || lockedDatasetChanges > 0 ? 1 : 0;
+  if (lockedDatasetChanges > 0) {
+    console.log(
+      chalk.red(
+        `Locked mode: ${String(lockedDatasetChanges)} ${pluralize(lockedDatasetChanges, "dataset")} changed since baseline.`
+      )
+    );
+  }
   console.log(
     `${String(failedSuites)} of ${String(completedRows.length)} suites failed. Exit code: ${String(exitCode)}`
   );

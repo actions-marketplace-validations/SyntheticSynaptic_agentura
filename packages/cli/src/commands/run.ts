@@ -7,6 +7,7 @@ interface RunCommandOptions {
   verbose?: boolean;
   local?: boolean;
   resetBaseline?: boolean;
+  locked?: boolean;
 }
 
 export async function runCommand(options: RunCommandOptions = {}): Promise<void> {

@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
@@ -77,6 +78,10 @@ function runCli(
       });
     });
   });
+}
+
+function fingerprintDataset(raw: string): string {
+  return `sha256:${createHash("sha256").update(raw).digest("hex")}`;
 }
 
 after(async () => {
@@ -402,6 +407,7 @@ ci:
 
 test("run --local creates a baseline snapshot on first run and writes non-TTY diff metadata", async () => {
   const directory = await createFixtureDir("agentura-cli-baseline-create-");
+  const dataset = `{"id":"case_0","input":"What is AcmeBot's refund policy?","expected":"30-day money back guarantee"}\n`;
 
   await writeCommonConfigFiles(
     directory,
@@ -412,7 +418,7 @@ process.stdin.on("end", () => {
   process.stdout.write("30-day money back guarantee");
 });
 `.trimStart(),
-    `{"id":"case_0","input":"What is AcmeBot's refund policy?","expected":"30-day money back guarantee"}\n`,
+    dataset,
     `
 version: 1
 agent:
@@ -448,6 +454,9 @@ ci:
       string,
       {
         score: number;
+        dataset_hash?: string;
+        dataset_path?: string;
+        case_count?: number;
         cases: Array<{
           id: string;
           input: string;
@@ -459,6 +468,22 @@ ci:
       }
     >;
   }>(path.join(directory, ".agentura", "baseline.json"));
+  const manifest = await readJson<{
+    run_id: string;
+    timestamp: string;
+    commit: string | null;
+    cli_version: string;
+    suites: Array<{
+      name: string;
+      strategy: string;
+      scorer: string | null;
+      dataset_hash: string;
+      case_count: number;
+      score: number;
+      passed: boolean;
+      judge_model: string | null;
+    }>;
+  }>(path.join(directory, ".agentura", "manifest.json"));
   const diff = await readJson<{
     baselineFound: boolean;
     baselineSaved: boolean;
@@ -468,6 +493,9 @@ ci:
   assert.equal(baseline.version, 1);
   assert.equal(baseline.commit, null);
   assert.equal(baseline.suites.accuracy.score, 1);
+  assert.equal(baseline.suites.accuracy.dataset_hash, fingerprintDataset(dataset));
+  assert.equal(baseline.suites.accuracy.dataset_path, "./evals/cases.jsonl");
+  assert.equal(baseline.suites.accuracy.case_count, 1);
   assert.deepEqual(baseline.suites.accuracy.cases[0], {
     id: "case_0",
     input: "What is AcmeBot's refund policy?",
@@ -476,6 +504,22 @@ ci:
     passed: true,
     score: 1,
   });
+  assert.match(manifest.run_id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+  assert.match(manifest.timestamp, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(manifest.commit, null);
+  assert.equal(manifest.cli_version, "0.1.2");
+  assert.deepEqual(manifest.suites, [
+    {
+      name: "accuracy",
+      strategy: "golden_dataset",
+      scorer: "exact_match",
+      dataset_hash: fingerprintDataset(dataset),
+      case_count: 1,
+      score: 1,
+      passed: true,
+      judge_model: null,
+    },
+  ]);
 
   assert.equal(diff.baselineFound, false);
   assert.equal(diff.baselineSaved, true);
@@ -559,6 +603,159 @@ process.stdin.on("end", () => {
   assert.equal(diff.summary.regressions, 1);
   assert.equal(diff.suites.accuracy.regressions[0]?.id, "case_3");
   assert.equal(diff.suites.accuracy.regressions[0]?.currentActual, "We do not offer refunds");
+});
+
+test("run --local warns when a suite dataset changed since baseline and refreshes the manifest", async () => {
+  const directory = await createFixtureDir("agentura-cli-dataset-change-warning-");
+  const baselineDataset =
+    `{"id":"case_1","input":"What is AcmeBot's refund policy?","expected":"30-day money back guarantee"}\n`;
+  const updatedDataset = `
+{"id":"case_1","input":"What is AcmeBot's refund policy?","expected":"30-day money back guarantee"}
+{"id":"case_2","input":"How many projects are on the free plan?","expected":"3 projects"}
+`.trimStart();
+
+  await writeCommonConfigFiles(
+    directory,
+    `
+const chunks = [];
+process.stdin.on("data", (chunk) => chunks.push(chunk.toString()));
+process.stdin.on("end", () => {
+  const input = chunks.join("").trim();
+  if (input === "What is AcmeBot's refund policy?") {
+    process.stdout.write("30-day money back guarantee");
+    return;
+  }
+
+  if (input === "How many projects are on the free plan?") {
+    process.stdout.write("3 projects");
+    return;
+  }
+
+  process.stdout.write("unknown");
+});
+`.trimStart(),
+    baselineDataset,
+    `
+version: 1
+agent:
+  type: cli
+  command: node ./agent.js
+  timeout_ms: 30000
+evals:
+  - name: accuracy
+    type: golden_dataset
+    dataset: ./evals/cases.jsonl
+    scorer: exact_match
+    threshold: 0.85
+ci:
+  block_on_regression: true
+  regression_threshold: 0.05
+  compare_to: main
+  post_comment: true
+  fail_on_new_suite: false
+`.trimStart()
+  );
+
+  const firstRun = await runCli(directory, ["run", "--local"]);
+  assert.equal(firstRun.code, 0);
+
+  await writeFile(path.join(directory, "evals", "cases.jsonl"), updatedDataset, "utf-8");
+
+  const secondRun = await runCli(directory, ["run", "--local"]);
+  const output = stripAnsi(secondRun.output);
+
+  assert.equal(secondRun.code, 0);
+  assert.match(output, /⚠ accuracy: dataset changed since baseline/);
+  assert.match(output, /\(was 1 case sha256:[0-9a-f]+, now 2 cases sha256:[0-9a-f]+\)/);
+  assert.match(output, /Score comparison to baseline may not be valid\./);
+  assert.match(output, /Run with --reset-baseline to accept new dataset as baseline\./);
+
+  const baseline = await readJson<{
+    suites: Record<string, { dataset_hash?: string; case_count?: number }>;
+  }>(path.join(directory, ".agentura", "baseline.json"));
+  const manifest = await readJson<{
+    suites: Array<{ name: string; dataset_hash: string; case_count: number }>;
+  }>(path.join(directory, ".agentura", "manifest.json"));
+
+  assert.equal(baseline.suites.accuracy.dataset_hash, fingerprintDataset(baselineDataset));
+  assert.equal(baseline.suites.accuracy.case_count, 1);
+  assert.deepEqual(manifest.suites, [
+    {
+      name: "accuracy",
+      strategy: "golden_dataset",
+      scorer: "exact_match",
+      dataset_hash: fingerprintDataset(updatedDataset),
+      case_count: 2,
+      score: 1,
+      passed: true,
+      judge_model: null,
+    },
+  ]);
+});
+
+test("run --local --locked exits 1 when a suite dataset changed since baseline", async () => {
+  const directory = await createFixtureDir("agentura-cli-dataset-change-locked-");
+
+  await writeCommonConfigFiles(
+    directory,
+    `
+const chunks = [];
+process.stdin.on("data", (chunk) => chunks.push(chunk.toString()));
+process.stdin.on("end", () => {
+  const input = chunks.join("").trim();
+  if (input === "What is AcmeBot's refund policy?") {
+    process.stdout.write("30-day money back guarantee");
+    return;
+  }
+
+  if (input === "How many projects are on the free plan?") {
+    process.stdout.write("3 projects");
+    return;
+  }
+
+  process.stdout.write("unknown");
+});
+`.trimStart(),
+    `{"id":"case_1","input":"What is AcmeBot's refund policy?","expected":"30-day money back guarantee"}\n`,
+    `
+version: 1
+agent:
+  type: cli
+  command: node ./agent.js
+  timeout_ms: 30000
+evals:
+  - name: accuracy
+    type: golden_dataset
+    dataset: ./evals/cases.jsonl
+    scorer: exact_match
+    threshold: 0.85
+ci:
+  block_on_regression: true
+  regression_threshold: 0.05
+  compare_to: main
+  post_comment: true
+  fail_on_new_suite: false
+`.trimStart()
+  );
+
+  const firstRun = await runCli(directory, ["run", "--local"]);
+  assert.equal(firstRun.code, 0);
+
+  await writeFile(
+    path.join(directory, "evals", "cases.jsonl"),
+    `
+{"id":"case_1","input":"What is AcmeBot's refund policy?","expected":"30-day money back guarantee"}
+{"id":"case_2","input":"How many projects are on the free plan?","expected":"3 projects"}
+`.trimStart(),
+    "utf-8"
+  );
+
+  const lockedRun = await runCli(directory, ["run", "--local", "--locked"]);
+  const output = stripAnsi(lockedRun.output);
+
+  assert.equal(lockedRun.code, 1);
+  assert.match(output, /⚠ accuracy: dataset changed since baseline/);
+  assert.match(output, /Locked mode: 1 dataset changed since baseline\./);
 });
 
 test("run --local --reset-baseline overwrites the saved baseline", async () => {
