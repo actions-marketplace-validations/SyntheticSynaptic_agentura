@@ -21,7 +21,7 @@ program
       "  run       Run evals locally\n" +
       "  login     Authenticate with Agentura"
   )
-  .version("0.0.0");
+  .version("0.1.1");
 
 program
   .command("generate")
