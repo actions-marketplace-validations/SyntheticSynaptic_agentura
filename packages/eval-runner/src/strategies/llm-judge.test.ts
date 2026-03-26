@@ -94,3 +94,69 @@ test("runLlmJudge treats an even split as not passing because there is no majori
   assert.equal(result.cases[0]?.passed, false);
   assert.equal(result.cases[0]?.agreement_rate, 0.5);
 });
+
+test("runLlmJudge passes full multi-turn conversation context to the judge and averages scored turns", async () => {
+  const cases: EvalCase[] = [
+    {
+      id: "case_9",
+      context: "Check cross-turn coherence.",
+      conversation: [
+        { role: "user", content: "I want to cancel my subscription" },
+        { role: "assistant", expected: "I can help with that." },
+        { role: "user", content: "Actually, can I pause it instead?" },
+        { role: "assistant", expected: "Pausing is available." },
+      ],
+      eval_turns: [2, 4],
+    },
+  ];
+
+  const seenContexts: string[] = [];
+
+  const agentFn: AgentFunction = async (input) => {
+    if (input === "I want to cancel my subscription") {
+      return {
+        output: "I can help with that. I can cancel or pause your subscription.",
+        latencyMs: 5,
+      };
+    }
+
+    return {
+      output: "Yes, pausing is available for one billing cycle.",
+      latencyMs: 6,
+    };
+  };
+
+  const result = await runLlmJudge(
+    {
+      suiteName: "quality",
+      threshold: 0.7,
+      agentFn,
+      judge: {
+        provider: "anthropic",
+        apiKey: "test-key",
+        model: "claude-3-5-haiku-20241022",
+      },
+      scoreJudge: async (_input, _output, _rubric, _judge, context) => {
+        seenContexts.push(context ?? "");
+        return { score: 0.9, reason: "Strong across turns." };
+      },
+    },
+    cases,
+    "Score coherence across turns."
+  );
+
+  assert.equal(result.score, 0.9);
+  assert.equal(result.cases[0]?.conversation_turn_results?.length, 2);
+  assert.equal(seenContexts.length, 2);
+  assert.match(seenContexts[0] ?? "", /Conversation so far:/);
+  assert.match(seenContexts[0] ?? "", /user: I want to cancel my subscription/);
+  assert.match(
+    seenContexts[0] ?? "",
+    /assistant: I can help with that\. I can cancel or pause your subscription\./
+  );
+  assert.match(seenContexts[1] ?? "", /user: Actually, can I pause it instead\?/);
+  assert.match(
+    seenContexts[1] ?? "",
+    /assistant: Yes, pausing is available for one billing cycle\./
+  );
+});

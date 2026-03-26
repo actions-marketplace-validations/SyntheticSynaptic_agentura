@@ -23,7 +23,7 @@ npx agentura@latest run --local
 ```
 
 ## What you will see
-The `accuracy` suite should show a mix of obvious passes and obvious misses, `quality` will score tone and helpfulness with the first available judge provider key, and `performance` will report whether the local HTTP agent stayed under the latency and cost limits.
+The `accuracy` suite should show a mix of obvious passes and obvious misses, `quality` will score tone and helpfulness with the first available judge provider key, `conversation` will replay multi-turn threads with request `history`, and `performance` will report whether the local HTTP agent stayed under the latency and cost limits.
 
 ## Without an API key
 This sample agent itself still needs OPENAI_API_KEY to answer requests. Golden dataset evals run without any judge API key.  

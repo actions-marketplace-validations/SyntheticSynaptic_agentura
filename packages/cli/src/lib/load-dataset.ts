@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import type { EvalCase, JsonObject, JsonValue } from "@agentura/types";
+import type { ConversationTurn, EvalCase, JsonObject, JsonValue } from "@agentura/types";
 
 const MAX_DATASET_LINES = 1000;
 
@@ -30,6 +30,104 @@ function isJsonObject(value: unknown): value is JsonObject {
   return !!value && typeof value === "object" && !Array.isArray(value) && isJsonValue(value);
 }
 
+function isPositiveIntegerArray(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every((entry) => Number.isInteger(entry) && entry > 0);
+}
+
+function parseConversation(
+  value: unknown,
+  filePath: string,
+  lineNumber: number
+): ConversationTurn[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(
+      `Invalid dataset entry at ${filePath}:${String(lineNumber)} — conversation must be a non-empty array`
+    );
+  }
+
+  return value.map((entry, index) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(
+        `Invalid dataset entry at ${filePath}:${String(lineNumber)} — conversation turn ${String(index + 1)} must be an object`
+      );
+    }
+
+    const record = entry as Record<string, unknown>;
+    const role = record.role;
+
+    if (role === "user") {
+      if (typeof record.content !== "string" || record.content.length === 0) {
+        throw new Error(
+          `Invalid dataset entry at ${filePath}:${String(lineNumber)} — user turns require content`
+        );
+      }
+
+      return {
+        role: "user",
+        content: record.content,
+      };
+    }
+
+    if (role === "assistant") {
+      if (typeof record.expected !== "string" || record.expected.length === 0) {
+        throw new Error(
+          `Invalid dataset entry at ${filePath}:${String(lineNumber)} — assistant turns require expected`
+        );
+      }
+
+      return {
+        role: "assistant",
+        expected: record.expected,
+      };
+    }
+
+    throw new Error(
+      `Invalid dataset entry at ${filePath}:${String(lineNumber)} — conversation role must be user or assistant`
+    );
+  });
+}
+
+function validateConversation(
+  conversation: ConversationTurn[],
+  evalTurns: number[] | undefined,
+  filePath: string,
+  lineNumber: number
+): void {
+  conversation.forEach((turn, index) => {
+    const expectedRole = index % 2 === 0 ? "user" : "assistant";
+    if (turn.role !== expectedRole) {
+      throw new Error(
+        `Invalid dataset entry at ${filePath}:${String(lineNumber)} — conversation turns must alternate user/assistant starting with user`
+      );
+    }
+  });
+
+  if (evalTurns) {
+    const assistantTurnNumbers = new Set(
+      conversation.flatMap((turn, index) => (turn.role === "assistant" ? [index + 1] : []))
+    );
+
+    for (const turnNumber of evalTurns) {
+      if (!assistantTurnNumbers.has(turnNumber)) {
+        throw new Error(
+          `Invalid dataset entry at ${filePath}:${String(lineNumber)} — eval_turns must reference assistant turn numbers`
+        );
+      }
+    }
+  }
+}
+
+function getLastUserInput(conversation: ConversationTurn[]): string {
+  for (let index = conversation.length - 1; index >= 0; index -= 1) {
+    const turn = conversation[index];
+    if (turn?.role === "user") {
+      return turn.content;
+    }
+  }
+
+  return "";
+}
+
 function toEvalCase(value: unknown, filePath: string, lineNumber: number): EvalCase {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Invalid dataset entry at ${filePath}:${String(lineNumber)} — expected object`);
@@ -43,14 +141,16 @@ function toEvalCase(value: unknown, filePath: string, lineNumber: number): EvalC
   const expectedTool = record.expected_tool;
   const expectedArgs = record.expected_args;
   const expectedOutput = record.expected_output;
+  const conversationValue = record.conversation;
+  const evalTurns = record.eval_turns;
 
   if (id !== undefined && typeof id !== "string") {
     throw new Error(`Invalid dataset entry at ${filePath}:${String(lineNumber)} — id must be a string`);
   }
 
-  if (!input) {
+  if (input !== null && conversationValue !== undefined) {
     throw new Error(
-      `Invalid dataset entry at ${filePath}:${String(lineNumber)} — missing input string`
+      `Invalid dataset entry at ${filePath}:${String(lineNumber)} — use either input or conversation, not both`
     );
   }
 
@@ -84,14 +184,37 @@ function toEvalCase(value: unknown, filePath: string, lineNumber: number): EvalC
     );
   }
 
+  if (evalTurns !== undefined && !isPositiveIntegerArray(evalTurns)) {
+    throw new Error(
+      `Invalid dataset entry at ${filePath}:${String(lineNumber)} — eval_turns must be an array of positive integers`
+    );
+  }
+
+  const conversation =
+    conversationValue !== undefined
+      ? parseConversation(conversationValue, filePath, lineNumber)
+      : undefined;
+
+  if (conversation) {
+    validateConversation(conversation, evalTurns, filePath, lineNumber);
+  }
+
+  if (!input && !conversation) {
+    throw new Error(
+      `Invalid dataset entry at ${filePath}:${String(lineNumber)} — missing input string`
+    );
+  }
+
   return {
     id: typeof id === "string" ? id : undefined,
-    input,
+    input: input ?? (conversation ? getLastUserInput(conversation) : undefined),
     context: typeof context === "string" ? context : undefined,
     expected: typeof expected === "string" ? expected : undefined,
     expected_tool: typeof expectedTool === "string" ? expectedTool : undefined,
     expected_args: isJsonObject(expectedArgs) ? expectedArgs : undefined,
     expected_output: typeof expectedOutput === "string" ? expectedOutput : undefined,
+    conversation,
+    eval_turns: isPositiveIntegerArray(evalTurns) ? evalTurns : undefined,
   };
 }
 

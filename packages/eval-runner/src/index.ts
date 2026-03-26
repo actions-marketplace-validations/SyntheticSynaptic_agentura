@@ -1,6 +1,12 @@
 export { callCliAgent } from "./agent-caller/cli-runner";
 export { callHttpAgent } from "./agent-caller/http";
 export { callSdkAgent } from "./agent-caller/sdk";
+export {
+  getCaseInput,
+  isConversationCase,
+  renderConversationTranscript,
+  runConversationCase,
+} from "./lib/conversation-runner";
 
 export { scoreContains } from "./scorers/contains";
 export { scoreExactMatch } from "./scorers/exact-match";
@@ -19,6 +25,10 @@ export { runToolUse } from "./strategies/tool-use";
 export type { CliAgentCallInput } from "./agent-caller/cli-runner";
 export type { AgentCallerResult, HttpAgentCallInput } from "./agent-caller/http";
 export type { SdkAgentCallInput } from "./agent-caller/sdk";
+export type {
+  ConversationExecutionTurn,
+  ConversationRunResult,
+} from "./lib/conversation-runner";
 
 export type {
   GoldenDatasetOptions,

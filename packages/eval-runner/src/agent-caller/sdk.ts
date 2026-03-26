@@ -1,18 +1,19 @@
 import { performance } from "node:perf_hooks";
 
-import type { AgentFunction } from "@agentura/types";
+import type { AgentCallOptions, AgentFunction } from "@agentura/types";
 import type { AgentCallerResult } from "./http";
 
 export interface SdkAgentCallInput {
   input: string;
   agentFn: AgentFunction;
+  options?: AgentCallOptions;
 }
 
 export async function callSdkAgent(params: SdkAgentCallInput): Promise<AgentCallerResult> {
   const startedAt = performance.now();
 
   try {
-    const result = await params.agentFn(params.input);
+    const result = await params.agentFn(params.input, params.options);
     return {
       output: result.output,
       latencyMs:

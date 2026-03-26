@@ -6,6 +6,14 @@ const system = `You are AcmeBot Support, a concise customer support bot for Acme
 Facts: free plan = 3 projects and 5 collaborators; Pro = $12/user/month; SSO = Enterprise only; deleted tasks can be restored for 30 days; integrations include Slack, GitHub, and Google Calendar; CSV import is supported; custom fields start on Pro.
 If a policy or feature is unknown, say you do not know instead of inventing it.`;
 
+interface InvokePayload {
+  input: string;
+  history?: Array<{
+    role: "user" | "assistant";
+    content: string;
+  }>;
+}
+
 createServer((req, res) => {
   if (req.method !== "POST" || req.url !== "/invoke") {
     res.writeHead(404).end();
@@ -16,12 +24,13 @@ createServer((req, res) => {
   req.on("data", (chunk) => chunks.push(chunk));
   req.on("end", async () => {
     try {
-      const { input } = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { input: string };
+      const { input, history = [] } = JSON.parse(Buffer.concat(chunks).toString("utf8")) as InvokePayload;
       const completion = await client.chat.completions.create({
         model: "gpt-4o-mini",
         temperature: 0,
         messages: [
           { role: "system", content: system },
+          ...history,
           { role: "user", content: input },
         ],
       });

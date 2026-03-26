@@ -1993,3 +1993,55 @@ Milestone 18 — run the pending manual `agentura generate` end-to-end checks an
 
 **Next session:**
 Milestone 18 — run the pending manual `agentura generate` end-to-end checks and missing-config validation flow.
+
+## Session — 2026-03-26 12:05 UTC
+
+**Milestone:** E — Multi-Turn Eval Support
+**Status:** COMPLETE
+
+**Files created:**
+- `packages/eval-runner/src/lib/conversation-runner.ts` — added the shared multi-turn conversation execution helper
+- `packages/eval-runner/src/lib/conversation-runner.test.ts` — added coverage for history replay, default final-turn scoring, and continued execution after turn failures
+- `examples/openai-agent/evals/conversation.jsonl` — added three multi-turn example conversations
+
+**Files modified:**
+- `packages/types/src/index.ts` — added conversation dataset/history types, per-turn result types, and optional `history` on `AgentFunction`
+- `packages/eval-runner/src/index.ts` — exported the conversation runner helpers
+- `packages/eval-runner/src/agent-caller/http.ts` — sent optional `history` in HTTP agent payloads
+- `packages/eval-runner/src/agent-caller/cli-runner.ts` — passed optional conversation history to CLI agents through `AGENTURA_HISTORY`
+- `packages/eval-runner/src/agent-caller/sdk.ts` — passed optional call options to SDK agents
+- `packages/eval-runner/src/agent-caller/http.test.ts` — added request payload coverage for `history`
+- `packages/eval-runner/src/strategies/golden-dataset.ts` — added multi-turn execution and per-turn averaging for scored assistant turns
+- `packages/eval-runner/src/strategies/golden-dataset.test.ts` — added multi-turn golden dataset coverage
+- `packages/eval-runner/src/strategies/llm-judge.ts` — added multi-turn judging with full conversation context
+- `packages/eval-runner/src/strategies/llm-judge.test.ts` — added multi-turn judge-context coverage
+- `packages/eval-runner/src/strategies/performance.ts` — normalized case input access through the shared helper
+- `packages/eval-runner/src/strategies/tool-use.ts` — normalized case input access through the shared helper
+- `packages/cli/src/lib/load-dataset.ts` — added multi-turn dataset parsing, validation, and derived-input support
+- `packages/cli/src/lib/local-run.ts` — added multi-turn verbose output, stable conversation IDs, history-aware local agent calls, and conversation-safe baseline diffs
+- `packages/cli/src/commands/run.test.ts` — added verbose multi-turn CLI coverage
+- `apps/worker/src/github/fetch-config.ts` — added worker-side multi-turn dataset parsing and validation
+- `apps/worker/src/queue-handlers/eval-run.ts` — threaded optional history through worker agent calls and normalized conversation case inputs
+- `examples/openai-agent/agent.ts` — accepted request `history` and forwarded it to the OpenAI chat prompt
+- `examples/openai-agent/agentura.yaml` — added a `conversation` eval suite
+- `examples/openai-agent/README.md` — documented the new multi-turn example suite
+- `turbo.json` — added worker type-check build-order dependencies for `@agentura/types` and `@agentura/eval-runner`
+- `docs/Documentation.md` — appended this session entry
+
+**Decisions made:**
+- Kept the multi-turn implementation as a thin shared `conversation-runner` layer so `golden_dataset` and `llm_judge` could reuse the same turn replay behavior without changing single-turn execution.
+- Preserved backward compatibility by making `history` optional everywhere: HTTP agents receive it in the JSON body, CLI agents get it via `AGENTURA_HISTORY`, and SDK agents receive it as an optional second argument.
+- Switched local baseline/diff matching from raw `input` strings to stable case IDs so multi-turn cases compare correctly even when multiple conversations end with similar prompts.
+
+**Validation results:**
+- `pnpm --filter @agentura/eval-runner build`: PASS
+- `pnpm --filter @agentura/eval-runner test`: PASS
+- `pnpm --filter agentura test`: PASS
+- `pnpm type-check`: PASS
+- `pnpm test`: PASS
+
+**Issues found:**
+- The worker’s standalone type-check depended on already-built workspace declarations from `@agentura/eval-runner`; this was fixed by adding an explicit Turbo dependency so the root `pnpm type-check` run now rebuilds the required package surfaces first.
+
+**Next session:**
+Milestone F — continue the eval system follow-up work, or extend multi-turn coverage into additional examples and cloud execution paths if requested.

@@ -130,13 +130,87 @@ const jsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
   ])
 );
 
+const conversationTurnSchema = z.discriminatedUnion("role", [
+  z.object({
+    role: z.literal("user"),
+    content: z.string().min(1),
+  }),
+  z.object({
+    role: z.literal("assistant"),
+    expected: z.string().min(1),
+  }),
+]);
+
 const evalCaseSchema = z.object({
-  input: z.string(),
+  id: z.string().optional(),
+  input: z.string().optional(),
+  context: z.string().optional(),
   expected: z.string().optional(),
   expected_tool: z.string().optional(),
   expected_args: z.record(z.string(), jsonValueSchema).optional(),
   expected_output: z.string().optional(),
+  conversation: z.array(conversationTurnSchema).min(1).optional(),
+  eval_turns: z.array(z.number().int().positive()).optional(),
+}).superRefine((value, ctx) => {
+  if (value.input && value.conversation) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "use either input or conversation, not both",
+      path: ["conversation"],
+    });
+  }
+
+  if (!value.input && !value.conversation) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "input is required unless conversation is provided",
+      path: ["input"],
+    });
+  }
+
+  if (value.conversation) {
+    value.conversation.forEach((turn, index) => {
+      const expectedRole = index % 2 === 0 ? "user" : "assistant";
+      if (turn.role !== expectedRole) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "conversation turns must alternate user/assistant starting with user",
+          path: ["conversation", index, "role"],
+        });
+      }
+    });
+  }
+
+  if (value.eval_turns && value.conversation) {
+    const assistantTurnNumbers = new Set(
+      value.conversation.flatMap((turn, index) => (turn.role === "assistant" ? [index + 1] : []))
+    );
+
+    for (const turnNumber of value.eval_turns) {
+      if (!assistantTurnNumbers.has(turnNumber)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "eval_turns must reference assistant turn numbers",
+          path: ["eval_turns"],
+        });
+        break;
+      }
+    }
+  }
 });
+
+function getLastUserInput(testCase: z.infer<typeof evalCaseSchema>): string {
+  const conversation = testCase.conversation ?? [];
+
+  for (let index = conversation.length - 1; index >= 0; index -= 1) {
+    const turn = conversation[index];
+    if (turn?.role === "user") {
+      return turn.content;
+    }
+  }
+
+  return "";
+}
 
 function isContentFile(data: unknown): data is ContentFile {
   if (!data || typeof data !== "object" || Array.isArray(data)) {
@@ -300,7 +374,10 @@ export async function fetchDatasetFile(
       );
     }
 
-    cases.push(parsedCase.data as EvalCase);
+    cases.push({
+      ...parsedCase.data,
+      input: parsedCase.data.input ?? getLastUserInput(parsedCase.data),
+    } as EvalCase);
   }
 
   return cases;

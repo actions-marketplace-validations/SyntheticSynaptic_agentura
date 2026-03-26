@@ -18,6 +18,12 @@ evals:
     rubric: ./evals/quality_rubric.md
     threshold: 0.80
 
+  - name: conversation
+    type: golden_dataset
+    dataset: ./evals/conversation.jsonl
+    scorer: contains
+    threshold: 0.75
+
   - name: performance
     type: performance
     dataset: ./evals/accuracy.jsonl

@@ -11,6 +11,23 @@ export interface ToolCall {
   result?: string;
 }
 
+export interface ConversationHistoryMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ConversationUserTurn {
+  role: "user";
+  content: string;
+}
+
+export interface ConversationAssistantTurn {
+  role: "assistant";
+  expected: string;
+}
+
+export type ConversationTurn = ConversationUserTurn | ConversationAssistantTurn;
+
 export interface AgenturaConfig {
   version: number;
   agent: AgentConfig;
@@ -49,12 +66,32 @@ export interface CIConfig {
 
 export interface EvalCase {
   id?: string;
-  input: string;
+  input?: string;
   context?: string;
   expected?: string;
   expected_tool?: string;
   expected_args?: JsonObject;
   expected_output?: string;
+  conversation?: ConversationTurn[];
+  eval_turns?: number[];
+}
+
+export interface ConversationTurnResult {
+  turnNumber: number;
+  input: string;
+  expected: string;
+  output: string | null;
+  score: number;
+  passed: boolean;
+  history: ConversationHistoryMessage[];
+  conversation: ConversationHistoryMessage[];
+  judgeReason?: string;
+  agreement_rate?: number;
+  judge_scores?: number[];
+  latencyMs: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  errorMessage?: string;
 }
 
 export interface EvalCaseResult {
@@ -76,6 +113,7 @@ export interface EvalCaseResult {
   actual_tool_name?: string | null;
   actual_tool_args?: JsonObject | null;
   tool_calls?: ToolCall[];
+  conversation_turn_results?: ConversationTurnResult[];
   latencyMs: number;
   inputTokens?: number;
   outputTokens?: number;
@@ -106,7 +144,14 @@ export interface EvalRunResult {
   totalDurationMs: number;
 }
 
-export type AgentFunction = (input: string) => Promise<AgentCallResult>;
+export interface AgentCallOptions {
+  history?: ConversationHistoryMessage[];
+}
+
+export type AgentFunction = (
+  input: string,
+  options?: AgentCallOptions
+) => Promise<AgentCallResult>;
 
 export interface AgentCallResult {
   output: string;

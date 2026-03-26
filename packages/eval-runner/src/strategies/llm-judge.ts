@@ -4,6 +4,12 @@ import pLimit from "p-limit";
 
 import type { AgentFunction, EvalCase, EvalCaseResult, SuiteRunResult } from "@agentura/types";
 import {
+  getCaseInput,
+  isConversationCase,
+  renderConversationTranscript,
+  runConversationCase,
+} from "../lib/conversation-runner";
+import {
   scoreLlmJudge,
   type LlmJudgeScore,
   type ResolvedLlmJudgeProvider,
@@ -56,6 +62,35 @@ function buildJudgeReason(results: LlmJudgeScore[], runs: number): string | unde
   return results.map((result, index) => `Run ${String(index + 1)}: ${result.reason}`).join(" | ");
 }
 
+function buildMultiTurnJudgeContext(
+  baseContext: string | undefined,
+  conversationTranscript: string
+): string {
+  const sections: string[] = [];
+
+  if (baseContext && baseContext.trim().length > 0) {
+    sections.push(baseContext.trim());
+  }
+
+  sections.push(`Conversation so far:\n${conversationTranscript}`);
+  return sections.join("\n\n");
+}
+
+function sumTurnMetric(
+  turns: Array<{ inputTokens?: number; outputTokens?: number }>,
+  key: "inputTokens" | "outputTokens"
+): number | undefined {
+  const values = turns
+    .map((turn) => turn[key])
+    .filter((value): value is number => typeof value === "number");
+
+  if (values.length === 0) {
+    return undefined;
+  }
+
+  return values.reduce((total, value) => total + value, 0);
+}
+
 async function runJudgeAttempt(
   config: LlmJudgeRunConfig,
   input: string,
@@ -92,12 +127,107 @@ export async function runLlmJudge(
         const caseStartedAt = performance.now();
 
         try {
-          const agentResult = await config.agentFn(testCase.input);
+          if (isConversationCase(testCase)) {
+            const conversationRun = await runConversationCase(testCase, config.agentFn);
+            const scoredTurns = conversationRun.turns.filter((turn) => turn.scored);
+            const scoredTurnResults = await Promise.all(
+              scoredTurns.map(async (turn) => {
+                if (turn.output === null) {
+                  return {
+                    turnNumber: turn.turnNumber,
+                    input: turn.input,
+                    expected: turn.expected,
+                    output: null,
+                    score: 0,
+                    passed: false,
+                    history: turn.history,
+                    conversation: turn.conversation,
+                    judgeReason: turn.errorMessage,
+                    agreement_rate: undefined,
+                    judge_scores: undefined,
+                    latencyMs: turn.latencyMs,
+                    inputTokens: turn.inputTokens,
+                    outputTokens: turn.outputTokens,
+                    errorMessage: turn.errorMessage,
+                  };
+                }
+
+                const context = buildMultiTurnJudgeContext(
+                  testCase.context,
+                  renderConversationTranscript(turn.conversation)
+                );
+                const judgeResults = await Promise.all(
+                  Array.from({ length: runs }, () =>
+                    runJudgeAttempt(config, turn.input, turn.output ?? "", rubric, context)
+                  )
+                );
+                const judgeScores = judgeResults.map((judgeResult) => judgeResult.score);
+                const passVotes = judgeScores.filter((score) => score >= config.threshold).length;
+                const agreementRate = buildAgreementRate(passVotes, runs);
+                const score = average(judgeScores);
+
+                return {
+                  turnNumber: turn.turnNumber,
+                  input: turn.input,
+                  expected: turn.expected,
+                  output: turn.output,
+                  score,
+                  passed: score >= config.threshold,
+                  history: turn.history,
+                  conversation: turn.conversation,
+                  judgeReason: buildJudgeReason(judgeResults, runs),
+                  agreement_rate: runs > 1 ? agreementRate : undefined,
+                  judge_scores: runs > 1 ? judgeScores : undefined,
+                  latencyMs: turn.latencyMs,
+                  inputTokens: turn.inputTokens,
+                  outputTokens: turn.outputTokens,
+                  errorMessage: turn.errorMessage,
+                };
+              })
+            );
+            const score = average(scoredTurnResults.map((turn) => turn.score));
+            const agreementRate =
+              runs > 1
+                ? average(
+                    scoredTurnResults
+                      .map((turn) => turn.agreement_rate)
+                      .filter((value): value is number => typeof value === "number")
+                  )
+                : undefined;
+            const lastScoredTurn = scoredTurnResults[scoredTurnResults.length - 1];
+
+            return {
+              caseIndex: index,
+              input: getCaseInput(testCase),
+              output: lastScoredTurn?.output ?? null,
+              expected: lastScoredTurn?.expected,
+              score,
+              passed: score >= config.threshold,
+              judgeReason: scoredTurnResults
+                .map((turn) =>
+                  turn.judgeReason ? `Turn ${String(turn.turnNumber)}: ${turn.judgeReason}` : null
+                )
+                .filter((value): value is string => value !== null)
+                .join(" | "),
+              agreement_rate: agreementRate,
+              latencyMs: Math.max(0, Math.round(performance.now() - caseStartedAt)),
+              inputTokens: sumTurnMetric(conversationRun.turns, "inputTokens"),
+              outputTokens: sumTurnMetric(conversationRun.turns, "outputTokens"),
+              conversation_turn_results: scoredTurnResults,
+              errorMessage: scoredTurnResults
+                .map((turn) => turn.errorMessage)
+                .filter((value): value is string => typeof value === "string")
+                .join(" | ") || undefined,
+            };
+          }
+
+          const input = getCaseInput(testCase);
+          const agentResult = await config.agentFn(input);
           const judgeResults = await Promise.all(
             Array.from({ length: runs }, () =>
               runJudgeAttempt(
                 config,
-                testCase.input,
+                input,
                 agentResult.output,
                 rubric,
                 testCase.context
@@ -112,7 +242,7 @@ export async function runLlmJudge(
 
           return {
             caseIndex: index,
-            input: testCase.input,
+            input,
             output: agentResult.output,
             expected: testCase.expected,
             score,
@@ -127,7 +257,7 @@ export async function runLlmJudge(
         } catch (error) {
           return {
             caseIndex: index,
-            input: testCase.input,
+            input: getCaseInput(testCase),
             output: null,
             expected: testCase.expected,
             score: 0,

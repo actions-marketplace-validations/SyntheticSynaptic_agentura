@@ -1,6 +1,11 @@
 import { performance } from "node:perf_hooks";
 
 import type { AgentFunction, EvalCase, EvalCaseResult, SuiteRunResult } from "@agentura/types";
+import {
+  getCaseInput,
+  isConversationCase,
+  runConversationCase,
+} from "../lib/conversation-runner";
 import { scoreContains } from "../scorers/contains";
 import { scoreExactMatch } from "../scorers/exact-match";
 import { scoreSemanticSimilarity } from "../scorers/semantic-similarity";
@@ -44,6 +49,21 @@ async function scoreCase(
   return scoreSemanticSimilarity(output, expected);
 }
 
+function sumTurnMetric(
+  turns: Array<{ inputTokens?: number; outputTokens?: number }>,
+  key: "inputTokens" | "outputTokens"
+): number | undefined {
+  const values = turns
+    .map((turn) => turn[key])
+    .filter((value): value is number => typeof value === "number");
+
+  if (values.length === 0) {
+    return undefined;
+  }
+
+  return values.reduce((total, value) => total + value, 0);
+}
+
 export async function runGoldenDataset(
   cases: EvalCase[],
   agentFn: AgentFunction,
@@ -59,8 +79,65 @@ export async function runGoldenDataset(
   for (let i = 0; i < cases.length; i += 1) {
     const current = cases[i];
 
+    if (isConversationCase(current)) {
+      const conversationRun = await runConversationCase(current, agentFn);
+      const scoredTurns = conversationRun.turns.filter((turn) => turn.scored);
+      const scoredTurnResults = await Promise.all(
+        scoredTurns.map(async (turn) => {
+          const rawScore =
+            turn.output === null
+              ? 0
+              : await scoreCase(scorer, turn.output, turn.expected, options);
+          const score = clampScore(rawScore);
+
+          return {
+            turnNumber: turn.turnNumber,
+            input: turn.input,
+            expected: turn.expected,
+            output: turn.output,
+            score,
+            passed: score >= threshold,
+            history: turn.history,
+            conversation: turn.conversation,
+            latencyMs: turn.latencyMs,
+            inputTokens: turn.inputTokens,
+            outputTokens: turn.outputTokens,
+            errorMessage: turn.errorMessage,
+          };
+        })
+      );
+      const caseScore =
+        scoredTurnResults.length === 0
+          ? 0
+          : scoredTurnResults.reduce((total, turn) => total + turn.score, 0) /
+            scoredTurnResults.length;
+      const lastScoredTurn = scoredTurnResults[scoredTurnResults.length - 1];
+
+      caseResults.push({
+        caseIndex: i,
+        input: getCaseInput(current),
+        output: lastScoredTurn?.output ?? null,
+        expected: lastScoredTurn?.expected,
+        score: caseScore,
+        passed: caseScore >= threshold,
+        conversation_turn_results: scoredTurnResults,
+        latencyMs: conversationRun.turns.reduce((total, turn) => total + turn.latencyMs, 0),
+        inputTokens: sumTurnMetric(conversationRun.turns, "inputTokens"),
+        outputTokens: sumTurnMetric(conversationRun.turns, "outputTokens"),
+        errorMessage:
+          scoredTurnResults.some((turn) => typeof turn.errorMessage === "string")
+            ? scoredTurnResults
+                .map((turn) => turn.errorMessage)
+                .filter((value): value is string => typeof value === "string")
+                .join(" | ")
+            : undefined,
+      });
+      continue;
+    }
+
     try {
-      const agentResult = await agentFn(current.input);
+      const input = getCaseInput(current);
+      const agentResult = await agentFn(input);
       const expected = current.expected ?? "";
       const rawScore = await scoreCase(scorer, agentResult.output, expected, options);
       const score = clampScore(rawScore);
@@ -68,7 +145,7 @@ export async function runGoldenDataset(
 
       caseResults.push({
         caseIndex: i,
-        input: current.input,
+        input,
         output: agentResult.output,
         expected: current.expected,
         score,
@@ -80,7 +157,7 @@ export async function runGoldenDataset(
     } catch (error) {
       caseResults.push({
         caseIndex: i,
-        input: current.input,
+        input: getCaseInput(current),
         output: null,
         expected: current.expected,
         score: 0,

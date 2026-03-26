@@ -2,6 +2,7 @@ import { Prisma, prisma } from "@agentura/db";
 import {
   callCliAgent,
   callHttpAgent,
+  getCaseInput,
   runGoldenDataset,
   runLlmJudge,
   runPerformance,
@@ -101,7 +102,7 @@ function isTimeoutErrorMessage(message: string | undefined): boolean {
 function createAgentFunction(agentConfig: AgentConfig): AgentFunction {
   const timeoutMs = agentConfig.timeout_ms ?? DEFAULT_AGENT_TIMEOUT_MS;
 
-  return async (input: string): Promise<AgentCallResult> => {
+  return async (input: string, options): Promise<AgentCallResult> => {
     if (agentConfig.type === "http") {
       if (!agentConfig.endpoint) {
         throw new Error("agent.endpoint is required for http agent type");
@@ -110,6 +111,7 @@ function createAgentFunction(agentConfig: AgentConfig): AgentFunction {
       const result = await callHttpAgent({
         endpoint: agentConfig.endpoint,
         input,
+        history: options?.history,
         timeoutMs,
       });
 
@@ -138,6 +140,7 @@ function createAgentFunction(agentConfig: AgentConfig): AgentFunction {
       const result = await callCliAgent({
         command: agentConfig.command,
         input,
+        history: options?.history,
         timeoutMs,
       });
 
@@ -184,7 +187,7 @@ async function runGoldenSuiteConcurrent(
         if (!caseResult) {
           return {
             caseIndex: index,
-            input: evalCase.input,
+            input: getCaseInput(evalCase),
             expected: evalCase.expected,
             output: null,
             score: 0,

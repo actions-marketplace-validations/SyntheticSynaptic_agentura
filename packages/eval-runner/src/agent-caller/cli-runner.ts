@@ -1,12 +1,14 @@
 import { spawn } from "node:child_process";
 import { performance } from "node:perf_hooks";
 
+import type { ConversationHistoryMessage } from "@agentura/types";
 import { getOutputValue, getToolCallsValue, getUsageValue } from "./http";
 import type { AgentCallerResult } from "./http";
 
 export interface CliAgentCallInput {
   command: string;
   input: string;
+  history?: ConversationHistoryMessage[];
   timeoutMs?: number;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
@@ -19,7 +21,10 @@ export function callCliAgent(params: CliAgentCallInput): Promise<AgentCallerResu
   return new Promise((resolve) => {
     const child = spawn(params.command, {
       cwd: params.cwd,
-      env: params.env,
+      env: {
+        ...params.env,
+        ...(params.history ? { AGENTURA_HISTORY: JSON.stringify(params.history) } : {}),
+      },
       shell: true,
     });
 

@@ -1,10 +1,16 @@
 import { performance } from "node:perf_hooks";
 
-import type { JsonObject, JsonValue, ToolCall } from "@agentura/types";
+import type {
+  ConversationHistoryMessage,
+  JsonObject,
+  JsonValue,
+  ToolCall,
+} from "@agentura/types";
 
 export interface HttpAgentCallInput {
   endpoint: string;
   input: string;
+  history?: ConversationHistoryMessage[];
   timeoutMs?: number;
   headers?: Record<string, string>;
   fetchImpl?: typeof fetch;
@@ -152,7 +158,10 @@ export async function callHttpAgent(params: HttpAgentCallInput): Promise<AgentCa
         "content-type": "application/json",
         ...params.headers,
       },
-      body: JSON.stringify({ input: params.input }),
+      body: JSON.stringify({
+        input: params.input,
+        ...(params.history ? { history: params.history } : {}),
+      }),
       signal: controller.signal,
     });
 

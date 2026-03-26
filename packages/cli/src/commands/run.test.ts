@@ -327,6 +327,79 @@ ci:
   assert.match(output, /actual tool:\s+calculator\(expression="340\+0\.15"\)/);
 });
 
+test("run --local --verbose prints per-turn scores for multi-turn golden_dataset suites", async () => {
+  const directory = await createFixtureDir("agentura-cli-local-multiturn-verbose-");
+
+  await mkdir(path.join(directory, "evals"), { recursive: true });
+  await writeFile(
+    path.join(directory, "agent.mjs"),
+    `
+export default async function agent(input, options = {}) {
+  const history = options.history ?? [];
+  if (input === "I want to cancel my subscription") {
+    return {
+      output: "I can help you cancel your subscription or pause it instead.",
+      latencyMs: 5
+    };
+  }
+
+  if (input === "Actually, can I pause it instead?") {
+    return {
+      output: history.length === 2
+        ? "Pausing is available for one billing cycle."
+        : "I lost the earlier context.",
+      latencyMs: 6
+    };
+  }
+
+  return {
+    output: "Unknown",
+    latencyMs: 1
+  };
+}
+`.trimStart(),
+    "utf-8"
+  );
+  await writeFile(
+    path.join(directory, "evals", "conversation.jsonl"),
+    `
+{"id":"case_3","conversation":[{"role":"user","content":"I want to cancel my subscription"},{"role":"assistant","expected":"I can help you cancel"},{"role":"user","content":"Actually, can I pause it instead?"},{"role":"assistant","expected":"Pausing is available for"}],"eval_turns":[2,4]}
+`.trimStart(),
+    "utf-8"
+  );
+  await writeFile(
+    path.join(directory, "agentura.yaml"),
+    `
+version: 1
+agent:
+  type: sdk
+  module: ./agent.mjs
+  timeout_ms: 30000
+evals:
+  - name: conversation
+    type: golden_dataset
+    dataset: ./evals/conversation.jsonl
+    scorer: contains
+    threshold: 0.80
+ci:
+  block_on_regression: true
+  regression_threshold: 0.05
+  compare_to: main
+  post_comment: true
+  fail_on_new_suite: false
+`.trimStart(),
+    "utf-8"
+  );
+
+  const result = await runCli(directory, ["run", "--local", "--verbose"]);
+  const output = stripAnsi(result.output);
+
+  assert.equal(result.code, 0);
+  assert.match(output, /✓ case_3 \(multi-turn, 2 turns scored\)/);
+  assert.match(output, /turn 2: 1\.00 "I can help you cancel your subscription or pause it instead\."/);
+  assert.match(output, /turn 4: 1\.00 "Pausing is available for one billing cycle\."/);
+});
+
 test("run --local creates a baseline snapshot on first run and writes non-TTY diff metadata", async () => {
   const directory = await createFixtureDir("agentura-cli-baseline-create-");
 

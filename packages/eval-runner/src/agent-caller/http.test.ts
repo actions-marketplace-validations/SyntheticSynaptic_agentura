@@ -62,3 +62,33 @@ test("callHttpAgent preserves structured tool_calls when the agent response incl
     },
   ]);
 });
+
+test("callHttpAgent sends history in the request payload when provided", async () => {
+  let body: unknown;
+
+  const fetchImpl: typeof fetch = (async (_url, init) => {
+    body = JSON.parse(String(init?.body ?? "{}"));
+    return new Response(JSON.stringify({ output: "ok" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  await callHttpAgent({
+    endpoint: "http://agent.local/test",
+    input: "Actually, can I pause it instead?",
+    history: [
+      { role: "user", content: "I want to cancel my subscription" },
+      { role: "assistant", content: "I can help with that." },
+    ],
+    fetchImpl,
+  });
+
+  assert.deepEqual(body, {
+    input: "Actually, can I pause it instead?",
+    history: [
+      { role: "user", content: "I want to cancel my subscription" },
+      { role: "assistant", content: "I can help with that." },
+    ],
+  });
+});

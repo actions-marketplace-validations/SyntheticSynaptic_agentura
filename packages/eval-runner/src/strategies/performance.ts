@@ -1,6 +1,7 @@
 import { performance } from "node:perf_hooks";
 
 import type { AgentFunction, EvalCase, EvalCaseResult, SuiteRunResult } from "@agentura/types";
+import { getCaseInput } from "../lib/conversation-runner";
 
 export interface PerformanceRunConfig {
   suiteName: string;
@@ -79,16 +80,17 @@ export async function runPerformance(
     cases.map((testCase, index) =>
       limit(async (): Promise<PerformanceCaseExecution> => {
         const caseStartedAt = performance.now();
+        const input = getCaseInput(testCase);
 
         try {
-          const agentResult = await config.agentFn(testCase.input);
+          const agentResult = await config.agentFn(input);
           const latencyMs = Math.max(0, Math.round(performance.now() - caseStartedAt));
           const score = latencyMs <= config.latencyThresholdMs ? 1 : 0;
 
           return {
             caseResult: {
               caseIndex: index,
-              input: testCase.input,
+              input,
               output: agentResult.output,
               expected: testCase.expected,
               score,
@@ -104,7 +106,7 @@ export async function runPerformance(
           return {
             caseResult: {
               caseIndex: index,
-              input: testCase.input,
+              input,
               output: null,
               expected: testCase.expected,
               score: 0,

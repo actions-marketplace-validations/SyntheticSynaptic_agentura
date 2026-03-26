@@ -11,6 +11,7 @@ import {
   callCliAgent,
   callHttpAgent,
   callSdkAgent,
+  getCaseInput,
   NO_LLM_JUDGE_API_KEY_WARNING,
   resolveLlmJudgeProvider,
   runGoldenDataset,
@@ -425,7 +426,11 @@ function createCaseId(testCase: EvalCase): string {
     return explicitId;
   }
 
-  return createHash("sha256").update(testCase.input).digest("hex");
+  const hashInput = Array.isArray(testCase.conversation)
+    ? JSON.stringify(testCase.conversation)
+    : getCaseInput(testCase);
+
+  return createHash("sha256").update(hashInput).digest("hex");
 }
 
 function toBaselineCaseSnapshot(testCase: EvalCase, caseResult: EvalCaseResult): BaselineCaseSnapshot {
@@ -436,7 +441,7 @@ function toBaselineCaseSnapshot(testCase: EvalCase, caseResult: EvalCaseResult):
 
   return {
     id: createCaseId(testCase),
-    input: testCase.input,
+    input: getCaseInput(testCase),
     expected: caseResult.expected ?? testCase.expected ?? null,
     actual: caseResult.output ?? null,
     passed: caseResult.passed,
@@ -572,13 +577,13 @@ function computeDiffReport(
     const newCases: DiffCaseChange[] = [];
     const missingCases: DiffCaseChange[] = [];
 
-    const baselineByInput = new Map(
-      (baselineSuite?.cases ?? []).map((testCase) => [testCase.input, testCase])
+    const baselineById = new Map(
+      (baselineSuite?.cases ?? []).map((testCase) => [testCase.id, testCase])
     );
-    const currentByInput = new Map(currentSuite.cases.map((testCase) => [testCase.input, testCase]));
+    const currentById = new Map(currentSuite.cases.map((testCase) => [testCase.id, testCase]));
 
     for (const currentCase of currentSuite.cases) {
-      const baselineCase = baselineByInput.get(currentCase.input);
+      const baselineCase = baselineById.get(currentCase.id);
       if (!baselineCase) {
         newCases.push(createDiffChange(null, currentCase));
         continue;
@@ -595,7 +600,7 @@ function computeDiffReport(
     }
 
     for (const baselineCase of baselineSuite?.cases ?? []) {
-      if (!currentByInput.has(baselineCase.input)) {
+      if (!currentById.has(baselineCase.id)) {
         missingCases.push(createDiffChange(baselineCase, null));
       }
     }
@@ -838,10 +843,11 @@ function createLocalAgentFunction(agentConfig: ParsedConfig["agent"], cwd: strin
   const timeoutMs = agentConfig.timeout_ms ?? 30_000;
 
   if (agentConfig.type === "http") {
-    return async (input: string) => {
+    return async (input: string, options) => {
       const result = await callHttpAgent({
         endpoint: agentConfig.endpoint as string,
         input,
+        history: options?.history,
         timeoutMs,
         headers: agentConfig.headers,
       });
@@ -861,10 +867,11 @@ function createLocalAgentFunction(agentConfig: ParsedConfig["agent"], cwd: strin
   }
 
   if (agentConfig.type === "cli") {
-    return async (input: string) => {
+    return async (input: string, options) => {
       const result = await callCliAgent({
         command: agentConfig.command as string,
         input,
+        history: options?.history,
         timeoutMs,
         cwd,
         env: process.env,
@@ -884,11 +891,12 @@ function createLocalAgentFunction(agentConfig: ParsedConfig["agent"], cwd: strin
     };
   }
 
-  return async (input: string) => {
+  return async (input: string, options) => {
     const sdkAgentFn = await loadSdkAgentFunction(agentConfig.module as string, cwd);
     const result = await callSdkAgent({
       input,
       agentFn: sdkAgentFn,
+      options,
     });
 
     if (result.output === null) {
@@ -1089,15 +1097,26 @@ function printVerboseCaseResults(
     suite.type === "golden_dataset" && suite.scorer === "semantic_similarity";
 
   result.cases.forEach((caseResult: EvalCaseResult) => {
+    const testCase = cases[caseResult.caseIndex] ?? {
+      id: undefined,
+      input: caseResult.input,
+      expected: caseResult.expected,
+    };
+    const caseId = createCaseId(testCase);
+    const conversationTurns = caseResult.conversation_turn_results ?? [];
     const icon = caseResult.passed ? chalk.green("✓") : chalk.red("✗");
 
+    if (conversationTurns.length > 0) {
+      console.log(
+        `  ${icon} ${caseId} (multi-turn, ${String(conversationTurns.length)} ${pluralize(conversationTurns.length, "turn")} scored)`
+      );
+      conversationTurns.forEach((turn) => {
+        console.log(`    turn ${String(turn.turnNumber)}: ${turn.score.toFixed(2)} ${quoteValue(turn.output)}`);
+      });
+      return;
+    }
+
     if (isSemanticSimilaritySuite) {
-      const testCase = cases[caseResult.caseIndex] ?? {
-        id: undefined,
-        input: caseResult.input,
-        expected: caseResult.expected,
-      };
-      const caseId = createCaseId(testCase);
       console.log(
         `  ${icon} ${caseId} (similarity: ${caseResult.score.toFixed(2)}) ${JSON.stringify(caseResult.input)}`
       );

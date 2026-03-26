@@ -9,6 +9,7 @@ import type {
   SuiteRunResult,
   ToolCall,
 } from "@agentura/types";
+import { getCaseInput } from "../lib/conversation-runner";
 import { scoreContains } from "../scorers/contains";
 
 export interface ToolUseRunConfig {
@@ -178,11 +179,12 @@ export async function runToolUse(
 
   for (let index = 0; index < cases.length; index += 1) {
     const current = cases[index];
+    const input = getCaseInput(current);
 
     if (!current?.expected_tool) {
       caseResults.push({
         caseIndex: index,
-        input: current?.input ?? "",
+        input,
         output: null,
         expected: current?.expected_output,
         expected_tool: current?.expected_tool,
@@ -199,7 +201,7 @@ export async function runToolUse(
     if (!current.expected_args) {
       caseResults.push({
         caseIndex: index,
-        input: current.input,
+        input,
         output: null,
         expected: current.expected_output,
         expected_tool: current.expected_tool,
@@ -214,7 +216,7 @@ export async function runToolUse(
     }
 
     try {
-      const agentResult = await config.agentFn(current.input);
+      const agentResult = await config.agentFn(input);
       const expectedToolCall = findExpectedToolCall(agentResult.tool_calls, current.expected_tool);
       const comparisonToolCall = getComparisonToolCall(agentResult.tool_calls, expectedToolCall);
       const toolCalled = expectedToolCall !== null;
@@ -229,7 +231,7 @@ export async function runToolUse(
 
       caseResults.push({
         caseIndex: index,
-        input: current.input,
+        input,
         output: agentResult.output,
         expected: current.expected_output,
         expected_tool: current.expected_tool,
@@ -250,7 +252,7 @@ export async function runToolUse(
     } catch (error) {
       caseResults.push({
         caseIndex: index,
-        input: current.input,
+        input,
         output: null,
         expected: current.expected_output,
         expected_tool: current.expected_tool,

@@ -17,6 +17,10 @@
       "dependsOn": ["^type-check", "@agentura/types#build", "@agentura/eval-runner#build"],
       "outputs": []
     },
+    "@agentura/worker#type-check": {
+      "dependsOn": ["^type-check", "@agentura/types#build", "@agentura/eval-runner#build"],
+      "outputs": []
+    },
     "dev": {
       "cache": false,
       "persistent": true
