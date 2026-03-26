@@ -120,8 +120,8 @@ agentura/
 | 15 — Landing Page + Waitlist + Pricing | ✅ Complete | 2026-03-09 |
 | 16 — CLI Auth Flow | ✅ Complete | 2026-03-06 |
 | 17 — Documentation + Onboarding | ✅ Complete | 2026-03-06 |
-| 18 — CLI: agentura generate | 🚧 In Progress | 2026-03-06 |
-| 19 — Dashboard Polish + Settings | 📋 Planned | — |
+| 18 — CLI: agentura generate | ✅ Complete | 2026-03-26 |
+| 19 — Dashboard Polish + Settings | 🚧 In Progress | — |
 
 ---
 
@@ -1011,6 +1011,11 @@ agent's performance against the baseline."
 | Mar 2026 | Local `llm_judge` auto-detects Anthropic, OpenAI, Gemini, then Groq by env key | Keeps `--local` zero-config for the major provider keys already used by developers. |
 | Mar 2026 | Repo CI excludes `@agentura/web` from `pnpm build` | The web app still has a known Prisma build-resolution issue, so CI builds only the stable workspace packages while type-check still covers the whole monorepo. |
 | Mar 2026 | Ship both a root GitHub Action and a nested reusable action | Preserves the simple `uses: SyntheticSynaptic/agentura@main` snippet while still exposing `.github/actions/agentura-eval/action.yml` as a reusable action entrypoint. |
+| Mar 2026 | `--local` mode as primary entry point | Zero-friction first impression drives npm downloads and stars. |
+| Mar 2026 | Regression diff with baseline snapshots | Most requested feature in developer eval tools; case-level diffs more useful than aggregate scores. |
+| Mar 2026 | Ollama as lowest-priority judge/embedding provider | Free local inference removes API key friction for open-source users. |
+| Mar 2026 | `--locked` mode and audit manifests | Maps directly to FDA post-market surveillance requirements for regulated environments. |
+| Mar 2026 | Dataset versioning via SHA-256 fingerprinting | Score comparisons across dataset versions are meaningless without it. |
 
 ---
 
@@ -1020,6 +1025,8 @@ agent's performance against the baseline."
 - 2026-02-26: A CLI scaffold `dev` script that exits immediately causes root `turbo run dev --parallel` to fail even if the web app starts; workspace `dev` scripts must stay alive.
 - 2026-03-26: `agentura run --local` only reads `agentura.yaml` from the current working directory, so the reusable GitHub Action must run from the config directory and alias non-default config filenames.
 - 2026-03-26: The repo-level `pnpm build` command now intentionally excludes `@agentura/web` until the Prisma resolution issue in that app is fixed.
+- 2026-03-26: Ollama model auto-detection via `/api/tags` is more robust than hardcoded defaults — users have widely varying installed models.
+- 2026-03-26: The `--locked` flag and `manifest.json` are the highest-value features for regulated and healthcare use cases even though they are trivial to implement relative to the eval strategies.
 
 ---
 

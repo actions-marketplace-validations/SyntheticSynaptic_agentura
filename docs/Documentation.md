@@ -2169,3 +2169,34 @@ Milestone 18 — run the remaining manual `agentura generate` E2E checks and the
 
 **Next session:**
 Milestone 18 — run the remaining manual `agentura generate` E2E checks and then advance to Milestone 19 dashboard polish.
+
+## Session — 2026-03-26 23:09 UTC
+
+**Milestone:** 19 — Documentation refresh for v0.2.1
+**Status:** COMPLETE
+
+**Files created:**
+- None
+
+**Files modified:**
+- `docs/agentura-yaml.md` — replaced the config reference with the current v0.2.1 schema, multi-turn format, CLI flags, and an updated end-to-end example
+- `docs/strategies.md` — expanded strategy coverage for semantic similarity, tool use, multi-turn evals, LLM judge multi-run behavior, and the updated performance guardrails
+- `docs/quickstart.md` — moved `--local` to the top as the primary zero-signup path and shifted the GitHub App flow to Steps 1–5
+- `docs/Plan.md` — updated milestone status, added new decision-log entries, and recorded the latest post-launch discoveries
+- `CHANGELOG.md` — replaced the placeholder changelog with versioned entries for `0.1.0` through `0.2.1`
+- `docs/Documentation.md` — appended this session entry
+
+**Decisions made:**
+- Led the quickstart with `npx agentura run --local` because that is now the lowest-friction way to experience the product.
+- Rewrote the reference pages around the shipped features instead of editing old sections in place so stale terminology like `latency_threshold_ms` would not survive the refresh.
+- Called out older `fuzzy` / `fuzzy_match` wording as legacy because the current local CLI schema accepts `exact_match`, `contains`, and `semantic_similarity`.
+
+**Validation results:**
+- `git diff --check`: PASS
+- `pnpm type-check`: PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Milestone 19 — continue the dashboard polish work and reconcile the remaining in-app docs pages with the refreshed top-level documentation.
