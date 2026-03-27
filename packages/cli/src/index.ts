@@ -9,6 +9,7 @@ import { consensusCommand } from "./commands/consensus";
 import { generateCommand } from "./commands/generate";
 import { initCommand } from "./commands/init";
 import { loginCommand } from "./commands/login";
+import { reportCommand } from "./commands/report";
 import {
   referenceDiffCommand,
   referenceHistoryCommand,
@@ -31,6 +32,7 @@ program
       "  init      Initialize agentura.yaml\n" +
       "  run       Run evals locally\n" +
       "  login     Authenticate with Agentura\n" +
+      "  report    Build a clinical governance audit report from local evidence\n" +
       "  reference Freeze an agent version and measure behavioral drift\n" +
       "  trace     Capture a production trace for an agent call"
   )
@@ -86,6 +88,14 @@ program
   .option("--drift-check", "Run a frozen-reference drift check after local evals")
   .option("--verbose", "Show individual case results")
   .action(runCommand);
+
+program
+  .command("report")
+  .description("Generate a self-contained clinical audit report from local eval evidence")
+  .requiredOption("--since <date>", "Only include evidence on or after this YYYY-MM-DD date")
+  .requiredOption("--reference <label>", "Frozen reference label used for drift reporting")
+  .requiredOption("--out <file>", "Output HTML file path")
+  .action(reportCommand);
 
 const referenceProgram = program
   .command("reference")

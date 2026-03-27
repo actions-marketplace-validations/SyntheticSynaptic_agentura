@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -38,6 +38,22 @@ async function writeCommonConfigFiles(
 async function readJson<T>(filePath: string): Promise<T> {
   const raw = await readFile(filePath, "utf-8");
   return JSON.parse(raw) as T;
+}
+
+async function findJsonFiles(directory: string): Promise<string[]> {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      const filePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        return findJsonFiles(filePath);
+      }
+
+      return entry.name.endsWith(".json") ? [filePath] : [];
+    })
+  );
+
+  return files.flat();
 }
 
 function runCli(
@@ -1792,6 +1808,475 @@ drift:
     divergent_cases: [],
     threshold_breaches: ["tool_call_drift", "latency_drift"],
   });
+});
+
+test("run --local writes an immutable eval-run audit record for clinical reports", async () => {
+  const directory = await createFixtureDir("agentura-cli-audit-record-");
+
+  await writeCommonConfigFiles(
+    directory,
+    `
+const { createHash } = require("node:crypto");
+const promptHash = createHash("sha256").update("clinical-agent-prompt").digest("hex");
+
+const chunks = [];
+process.stdin.on("data", (chunk) => chunks.push(chunk.toString()));
+process.stdin.on("end", () => {
+  const input = chunks.join("").trim();
+  process.stdout.write(JSON.stringify({
+    output: input.toLowerCase() === "stable follow-up plan" ? "stable follow-up plan" : "unknown",
+    latencyMs: 18,
+    model: "gpt-4o-mini",
+    model_version: "gpt-4o-mini-2026-03-27",
+    prompt_hash: promptHash,
+    tool_calls: [
+      {
+        name: "retrieve_patient_record",
+        args: { patient_id: "pt_demo" },
+        result: { note: "stable" },
+        data_accessed: ["patient:pt_demo"]
+      }
+    ]
+  }));
+});
+`.trimStart(),
+    `{"id":"case_1","input":"stable follow-up plan","expected":"stable follow-up plan"}\n`,
+    `
+version: 1
+agent:
+  type: cli
+  command: node agent.js
+  timeout_ms: 30000
+
+evals:
+  - name: accuracy
+    type: golden_dataset
+    dataset: ./evals/cases.jsonl
+    scorer: exact_match
+    threshold: 0.85
+
+ci:
+  block_on_regression: true
+  regression_threshold: 0.05
+  compare_to: main
+  post_comment: true
+  fail_on_new_suite: false
+`.trimStart()
+  );
+
+  const result = await runCli(directory, ["run", "--local"]);
+  const output = stripAnsi(result.output);
+
+  assert.equal(result.code, 0);
+  assert.match(output, /No baseline found\. This run will be saved as baseline\./);
+
+  const auditFiles = await findJsonFiles(path.join(directory, ".agentura", "eval-runs"));
+  assert.equal(auditFiles.length, 1);
+
+  const record = await readJson<{
+    run_id: string;
+    agent: { id: string; type: string; target: string | null };
+    overall_passed: boolean;
+    model_versions: string[];
+    prompt_hashes: string[];
+    suites: Array<{
+      name: string;
+      case_count: number;
+      pass_rate: number;
+      dataset_hash: string;
+      baseline_delta: number | null;
+    }>;
+    traces: Array<{
+      suite_name: string;
+      case_id: string;
+      passed: boolean;
+      model_version: string;
+      prompt_hash: string;
+      tools_called: Array<{ tool_name: string; data_accessed: string[] }>;
+    }>;
+  }>(auditFiles[0] ?? "");
+
+  assert.equal(record.agent.type, "cli");
+  assert.equal(record.agent.target, "node agent.js");
+  assert.equal(record.overall_passed, true);
+  assert.deepEqual(record.model_versions, ["gpt-4o-mini-2026-03-27"]);
+  assert.equal(record.prompt_hashes.length, 1);
+  assert.equal(record.suites.length, 1);
+  assert.equal(record.suites[0]?.name, "accuracy");
+  assert.equal(record.suites[0]?.case_count, 1);
+  assert.equal(record.suites[0]?.pass_rate, 1);
+  assert.equal(record.suites[0]?.dataset_hash, fingerprintDataset(`{"id":"case_1","input":"stable follow-up plan","expected":"stable follow-up plan"}\n`));
+  assert.equal(record.suites[0]?.baseline_delta, null);
+  assert.equal(record.traces.length, 1);
+  assert.equal(record.traces[0]?.suite_name, "accuracy");
+  assert.equal(record.traces[0]?.case_id, "case_1");
+  assert.equal(record.traces[0]?.passed, true);
+  assert.equal(record.traces[0]?.model_version, "gpt-4o-mini-2026-03-27");
+  assert.match(record.traces[0]?.prompt_hash ?? "", /^[0-9a-f]{64}$/);
+  assert.deepEqual(record.traces[0]?.tools_called, [
+    {
+      tool_name: "retrieve_patient_record",
+      data_accessed: ["patient:pt_demo"],
+    },
+  ]);
+});
+
+test("report command renders a self-contained clinical audit html report with drift, consensus, and redaction", async () => {
+  const directory = await createFixtureDir("agentura-cli-report-command-");
+
+  await mkdir(path.join(directory, ".agentura", "eval-runs", "2026-03-20"), { recursive: true });
+  await mkdir(path.join(directory, ".agentura", "eval-runs", "2026-03-27"), { recursive: true });
+  await mkdir(path.join(directory, ".agentura", "reference", "v1.0-pre-prompt-change"), {
+    recursive: true,
+  });
+
+  const promptHash = "a".repeat(64);
+
+  await writeFile(
+    path.join(directory, ".agentura", "eval-runs", "2026-03-20", "run-1.json"),
+    JSON.stringify(
+      {
+        version: 1,
+        run_id: "run-1",
+        timestamp: "2026-03-20T12:00:00.000Z",
+        commit: null,
+        agent: {
+          id: "clinical-agent",
+          type: "sdk",
+          target: "./agent.mjs",
+        },
+        overall_passed: false,
+        model_names: ["gpt-4o-mini"],
+        model_versions: ["gpt-4o-mini-2026-03-20"],
+        prompt_hashes: [promptHash],
+        suites: [
+          {
+            name: "accuracy",
+            strategy: "golden_dataset",
+            case_count: 2,
+            pass_rate: 0.5,
+            score: 0.5,
+            passed: false,
+            threshold: 0.85,
+            dataset_hash: "sha256:dataset-a",
+            dataset_path: "./evals/accuracy.jsonl",
+            baseline_delta: -0.1,
+          },
+        ],
+        traces: [
+          {
+            trace_id: "trace-pass-1",
+            suite_name: "accuracy",
+            case_id: "case_1",
+            passed: true,
+            input: "Patient name: Alice Example, dob: 1970-01-01",
+            output: "Routine follow-up in six months",
+            tools_called: [
+              {
+                tool_name: "retrieve_patient_record",
+                data_accessed: ["patient:alice"],
+              },
+            ],
+            flags: [],
+            duration_ms: 80,
+            started_at: "2026-03-20T12:00:05.000Z",
+            model: "gpt-4o-mini",
+            model_version: "gpt-4o-mini-2026-03-20",
+            prompt_hash: promptHash,
+            consensus_result: null,
+            source: "eval-run",
+          },
+          {
+            trace_id: "trace-flagged-consensus",
+            suite_name: "consensus_check",
+            case_id: "case_consensus",
+            passed: false,
+            input: "Patient address: 1 Main St",
+            output: "Watchful wait",
+            tools_called: [],
+            flags: [
+              {
+                type: "consensus_disagreement",
+                agreement_rate: 0.61,
+              },
+            ],
+            duration_ms: 120,
+            started_at: "2026-03-20T12:00:06.000Z",
+            model: "consensus",
+            model_version: "anthropic:claude-sonnet-4-6,openai:gpt-4o",
+            prompt_hash: null,
+            consensus_result: {
+              winning_response: "Watchful wait",
+              agreement_rate: 0.61,
+              responses: [
+                {
+                  provider: "anthropic",
+                  model: "claude-sonnet-4-6",
+                  response: "Watchful wait",
+                  latency_ms: 70,
+                },
+                {
+                  provider: "openai",
+                  model: "gpt-4o",
+                  response: "Refer ACHD",
+                  latency_ms: 60,
+                },
+              ],
+              dissenting_models: ["openai:gpt-4o"],
+              flag: {
+                type: "consensus_disagreement",
+                agreement_rate: 0.61,
+              },
+            },
+            source: "eval-run",
+          },
+        ],
+      },
+      null,
+      2
+    ) + "\n",
+    "utf-8"
+  );
+
+  await writeFile(
+    path.join(directory, ".agentura", "eval-runs", "2026-03-27", "run-2.json"),
+    JSON.stringify(
+      {
+        version: 1,
+        run_id: "run-2",
+        timestamp: "2026-03-27T12:00:00.000Z",
+        commit: null,
+        agent: {
+          id: "clinical-agent",
+          type: "sdk",
+          target: "./agent.mjs",
+        },
+        overall_passed: true,
+        model_names: ["gpt-4o-mini"],
+        model_versions: ["gpt-4o-mini-2026-03-27"],
+        prompt_hashes: [promptHash],
+        suites: [
+          {
+            name: "accuracy",
+            strategy: "golden_dataset",
+            case_count: 2,
+            pass_rate: 1,
+            score: 1,
+            passed: true,
+            threshold: 0.85,
+            dataset_hash: "sha256:dataset-a",
+            dataset_path: "./evals/accuracy.jsonl",
+            baseline_delta: 0.2,
+          },
+        ],
+        traces: [
+          {
+            trace_id: "trace-pass-2",
+            suite_name: "accuracy",
+            case_id: "case_2",
+            passed: true,
+            input: "Patient name: Bob Example",
+            output: "Stable follow-up plan",
+            tools_called: [],
+            flags: [],
+            duration_ms: 75,
+            started_at: "2026-03-27T12:00:05.000Z",
+            model: "gpt-4o-mini",
+            model_version: "gpt-4o-mini-2026-03-27",
+            prompt_hash: promptHash,
+            consensus_result: null,
+            source: "eval-run",
+          },
+          {
+            trace_id: "trace-flagged-1",
+            suite_name: "performance",
+            case_id: "case_perf",
+            passed: false,
+            input: "address: 44 Health Way",
+            output: "Delayed response",
+            tools_called: [
+              {
+                tool_name: "retrieve_patient_record",
+                data_accessed: ["patient:bob"],
+              },
+            ],
+            flags: [
+              {
+                type: "latency_exceeded",
+                threshold_ms: 100,
+                actual_ms: 240,
+              },
+            ],
+            duration_ms: 240,
+            started_at: "2026-03-27T12:00:06.000Z",
+            model: "gpt-4o-mini",
+            model_version: "gpt-4o-mini-2026-03-27",
+            prompt_hash: promptHash,
+            consensus_result: null,
+            source: "eval-run",
+          },
+        ],
+      },
+      null,
+      2
+    ) + "\n",
+    "utf-8"
+  );
+
+  await writeFile(
+    path.join(directory, ".agentura", "reference", "v1.0-pre-prompt-change", "metadata.json"),
+    JSON.stringify(
+      {
+        version: 1,
+        label: "v1.0-pre-prompt-change",
+        timestamp: "2026-03-15T00:00:00.000Z",
+        dataset_path: "./evals/accuracy.jsonl",
+        dataset_hash: "sha256:dataset-a",
+        case_count: 2,
+        model: "gpt-4o-mini",
+        prompt_hash: promptHash,
+        agent_module: "./agent.mjs",
+      },
+      null,
+      2
+    ) + "\n",
+    "utf-8"
+  );
+  await writeFile(
+    path.join(directory, ".agentura", "reference", "v1.0-pre-prompt-change", "outputs.jsonl"),
+    [
+      JSON.stringify({
+        id: "case_4",
+        input: "Patient A next step",
+        output: "Refer ACHD specialist now",
+        tool_calls: [{ name: "route_specialist", args: { specialty: "achd" } }],
+        latency_ms: 40,
+      }),
+      JSON.stringify({
+        id: "case_7",
+        input: "Patient B next step",
+        output: "Schedule routine follow-up",
+        tool_calls: [{ name: "retrieve_patient_record", args: { patient_id: "b" } }],
+        latency_ms: 45,
+      }),
+      "",
+    ].join("\n"),
+    "utf-8"
+  );
+  await writeFile(
+    path.join(directory, ".agentura", "reference", "history.json"),
+    JSON.stringify(
+      {
+        version: 1,
+        comparisons: [
+          {
+            version: 1,
+            timestamp: "2026-03-20T12:00:00.000Z",
+            reference_label: "v1.0-pre-prompt-change",
+            reference_timestamp: "2026-03-15T00:00:00.000Z",
+            semantic_drift: 0.88,
+            tool_call_drift: 0.95,
+            latency_drift_ms: 80,
+            tool_patterns_added: [],
+            tool_patterns_removed: [],
+            divergent_cases: [],
+            threshold_breaches: [],
+          },
+        ],
+      },
+      null,
+      2
+    ) + "\n",
+    "utf-8"
+  );
+
+  await writeFile(
+    path.join(directory, "agent.mjs"),
+    buildReferenceAgentModule({
+      "Patient A next step": {
+        output: "Watchful wait for 6 months",
+        latencyMs: 180,
+        toolCalls: [{ name: "watchful_wait", args: { months: 6 } }],
+      },
+      "Patient B next step": {
+        output: "Schedule routine follow-up",
+        latencyMs: 75,
+        toolCalls: [{ name: "retrieve_patient_record", args: { patient_id: "b" } }],
+      },
+    }),
+    "utf-8"
+  );
+  await writeFile(
+    path.join(directory, "agentura.yaml"),
+    `
+version: 1
+agent:
+  type: sdk
+  module: ./agent.mjs
+  timeout_ms: 30000
+
+evals:
+  - name: accuracy
+    type: golden_dataset
+    dataset: ./evals/accuracy.jsonl
+    scorer: exact_match
+    threshold: 0.85
+
+ci:
+  block_on_regression: true
+  regression_threshold: 0.05
+  compare_to: main
+  post_comment: true
+  fail_on_new_suite: false
+
+drift:
+  reference: v1.0-pre-prompt-change
+  thresholds:
+    semantic_drift: 0.85
+    tool_call_drift: 0.90
+    latency_drift_ms: 200
+`.trimStart(),
+    "utf-8"
+  );
+
+  const result = await runCli(directory, [
+    "report",
+    "--since",
+    "2026-03-01",
+    "--reference",
+    "v1.0-pre-prompt-change",
+    "--out",
+    "clinical-audit-2026-03.html",
+  ], {
+    OPENAI_API_KEY: null,
+    ANTHROPIC_API_KEY: null,
+    GEMINI_API_KEY: null,
+    GROQ_API_KEY: null,
+    OLLAMA_BASE_URL: "http://127.0.0.1:1",
+  });
+  const output = stripAnsi(result.output);
+
+  assert.equal(result.code, 0);
+  assert.match(output, /Clinical audit report written to clinical-audit-2026-03\.html/);
+
+  const html = await readFile(path.join(directory, "clinical-audit-2026-03.html"), "utf-8");
+
+  assert.match(html, /<!doctype html>/i);
+  assert.match(html, /Clinical Audit Report/);
+  assert.match(html, /clinical-agent/);
+  assert.match(html, /Total runs/);
+  assert.match(html, /50\.0%/);
+  assert.match(html, /Dataset Hashes/);
+  assert.match(html, /sha256:dataset-a/);
+  assert.match(html, /consensus_check/);
+  assert.match(html, /Semantic drift trend/);
+  assert.match(html, /Added: case_4:watchful_wait:\{&quot;months&quot;:6\}/);
+  assert.match(html, /Removed: case_4:route_specialist:\{&quot;specialty&quot;:&quot;achd&quot;\}/);
+  assert.match(html, /All changes to model, prompt, or policy documented above\. No undocumented changes detected\./);
+  assert.match(html, /\[REDACTED\]/);
+  assert.doesNotMatch(html, /Alice Example/);
+  assert.doesNotMatch(html, /1 Main St/);
+  assert.doesNotMatch(html, /https?:\/\//);
 });
 
 test("consensus command parser normalizes provider aliases and validates threshold", () => {

@@ -7,10 +7,10 @@
 
 ## Current Status
 
-**Active milestone:** I — Frozen Reference and Drift Detection
-**Progress:** Added frozen reference snapshots, drift diff/history commands, and manifest drift summaries
-**Last updated:** Added local reference snapshot storage, frozen-input drift comparison, `--drift-check` integration, and drift docs
-**Next action:** Surface frozen-reference drift trends in broader reporting and dashboard flows
+**Active milestone:** J — Clinical Audit Report Generator
+**Progress:** Added immutable local eval-run audit records and a self-contained clinical HTML report for CMIO and FDA PCCP review
+**Last updated:** Added `agentura report`, report-time redaction, drift trend rendering, and clinical governance docs
+**Next action:** Surface the same clinical audit evidence in the dashboard and decide whether cloud-hosted eval runs should emit the same immutable report inputs
 
 ---
 
@@ -2491,3 +2491,85 @@ Wire the top-level runtime `consensus` block into any future live agent invocati
 
 **Next session:**
 Extend drift summaries into dashboard and reporting surfaces so frozen-reference trend lines are visible without reading local files directly.
+
+## Session — 2026-03-27 10:05 UTC
+
+**Milestone:** 15 — Landing Page + Waitlist + Pricing (follow-up overhaul)
+**Status:** COMPLETE
+
+**Files created:**
+- `apps/web/src/components/landing/HeroSection.tsx` — rebuilt hero with new copy, why-now strip, and CTA structure
+- `apps/web/src/components/landing/StatsBar.tsx` — honest stats bar with in-view count-up behavior
+- `apps/web/src/components/landing/PrGateWidget.tsx` — updated PR gate widget with safety row, replay, autoplay, and fail glow
+- `apps/web/src/components/landing/StoryModeSection.tsx` — stronger tab states, safety drift scenario, auto-rotation, and progress timing
+- `apps/web/src/components/landing/ArchitectureSection.tsx` — new animated stack-fit diagram section
+- `apps/web/src/components/landing/PlaygroundSection.tsx` — new live/mock browser playground UI with cooldown, actions, and result states
+- `apps/web/src/components/landing/ComparisonSection.tsx` — expanded comparison table and supporting terminal demo
+- `apps/web/src/components/landing/OpenSourceSection.tsx` — refreshed open-source section copy and terminal flow
+- `apps/web/src/components/landing/SocialProofStrip.tsx` — market-category social proof strip above footer
+- `apps/web/src/components/landing/SiteFooter.tsx` — updated footer copy and links
+- `apps/web/src/components/landing/CustomCursor.tsx` — cyan crosshair cursor for fine pointers
+- `apps/web/src/components/landing/useCountUp.ts` — count-up animation hook
+- `apps/web/src/components/landing/useInView.ts` — shared intersection observer hook
+- `apps/web/src/app/api/playground/route.ts` — server route for live Anthropic or graceful mock playground runs
+- `docs/plans/2026-03-27-agentura-website-overhaul-design.md` — approved design note for the overhaul
+- `docs/plans/2026-03-27-agentura-website-overhaul.md` — implementation plan for the overhaul
+
+**Files modified:**
+- `apps/web/src/app/page.tsx` — replaced the monolithic landing page with a composed landing shell and updated nav
+- `apps/web/src/app/layout.tsx` — mounted the custom cursor and refreshed metadata description
+- `apps/web/src/app/globals.css` — added fine-pointer cursor rules
+- `apps/web/.env.example` — documented `NEXT_PUBLIC_SHOW_PLAYGROUND` and `ANTHROPIC_API_KEY`
+- `docs/Documentation.md` — appended this session handoff
+
+**Decisions made:**
+- The playground now runs live Anthropic calls when `ANTHROPIC_API_KEY` is configured and automatically falls back to deterministic mock output when it is not, so the section is always usable without exposing secrets.
+- `NEXT_PUBLIC_SHOW_PLAYGROUND` is treated as an opt-out (`false` hides it) so the new section is visible by default after deploy while still remaining toggleable.
+
+**Validation results:**
+- `pnpm --filter @agentura/web type-check`: PASS
+- `NEXT_PUBLIC_SHOW_PLAYGROUND=true pnpm --filter @agentura/web build`: PASS
+- `pnpm run type-check`: PASS
+- Local Playwright sanity pass against `http://127.0.0.1:3001`: PASS for nav/copy, count-up completion, PR widget state, section ordering, and mobile stacking spot check
+
+**Issues found:**
+- `next build` emitted existing environment-dependent DNS warnings while generating static pages because Upstash host resolution is unavailable in this environment, but the build completed successfully.
+- Local browser verification showed a missing `favicon.ico` 404 in dev; landing page functionality was unaffected.
+
+**Next session:**
+Run a live playground check with a configured `ANTHROPIC_API_KEY`, add a real favicon, and replace the Discord placeholder link once the community URL exists.
+
+## Session — 2026-03-27 11:35 UTC
+
+**Milestone:** J — Clinical Audit Report Generator
+**Status:** COMPLETE
+
+**Files created:**
+- `packages/cli/src/commands/report.ts` — added the `agentura report` command entry point and CLI output
+- `packages/cli/src/lib/report.ts` — implemented immutable eval-run audit record storage, report data loading, redaction, and self-contained HTML rendering
+- `docs/clinical-report.md` — documented the clinical governance report workflow and local evidence sources
+
+**Files modified:**
+- `packages/cli/src/index.ts` — registered the new `report` command in the CLI
+- `packages/cli/src/lib/local-run.ts` — persisted immutable per-run audit records with suite metadata, observed models/prompt hashes, and representative trace evidence
+- `packages/cli/src/lib/reference.ts` — extended drift comparisons with tool-pattern additions and removals for report rendering
+- `packages/cli/src/commands/run.test.ts` — added coverage for eval-run audit record persistence and end-to-end report generation
+- `README.md` — added the clinical governance use case and report command example
+- `docs/Documentation.md` — updated current status and appended this session summary
+
+**Decisions made:**
+- Local clinical reporting uses immutable per-run JSON records under `.agentura/eval-runs/` instead of appending to a mutable history file, so each local eval run remains audit-friendly and independently inspectable.
+- The report combines eval-run audit records with stored trace files and drift history, deduplicating by `trace_id`, so flagged eval failures and ad hoc trace captures can coexist in one artifact without double counting.
+- Report-time redaction reuses the Milestone H PII key set and applies it to both structured payloads and labeled free-text trace fields before HTML rendering.
+
+**Validation results:**
+- `pnpm --filter agentura type-check`: PASS
+- `pnpm --filter agentura test`: PASS
+- `pnpm type-check`: PASS
+- `pnpm test`: PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Decide whether worker-side and cloud-triggered eval runs should emit the same immutable audit records so the clinical report can span local and hosted evidence uniformly.

@@ -29,6 +29,8 @@ no login, no GitHub App, no cloud calls required.
 - LLM judge majority vote — runs judge N times, reports
   agreement rate, flags unreliable results
 - Locked mode and audit manifests for regulated environments
+- Clinical governance audit reports — generate a single HTML
+  artifact for CMIO and FDA PCCP review
 - Works with any agent: OpenAI, Anthropic, LangChain, or any
   HTTP endpoint
 - Self-hostable and open source (MIT)
@@ -173,6 +175,19 @@ agentura run --local --locked
 
 Exits with code 1 if any dataset changed since baseline.
 Designed for environments requiring audit trails.
+
+Generate a clinical governance report from local traces,
+eval history, consensus logs, and drift checks:
+
+```bash
+agentura report \
+  --since 2026-03-01 \
+  --reference v1.0-pre-prompt-change \
+  --out clinical-audit-2026-03.html
+```
+
+See [docs/clinical-report.md](docs/clinical-report.md) for the
+full workflow.
 
 ## Comparison
 

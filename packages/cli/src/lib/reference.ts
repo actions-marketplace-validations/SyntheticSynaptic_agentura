@@ -69,6 +69,8 @@ export interface DriftComparisonResult {
   semantic_drift: number;
   tool_call_drift: number;
   latency_drift_ms: number;
+  tool_patterns_added?: string[];
+  tool_patterns_removed?: string[];
   divergent_cases: DivergentReferenceCase[];
   threshold_breaches: DriftThresholdBreach[];
 }
@@ -435,10 +437,9 @@ export async function diffAgainstReference(options: {
     similarities.length === 0
       ? 1
       : similarities.reduce((total, value) => total + value, 0) / similarities.length;
-  const toolCallDrift = jaccardSimilarity(
-    new Set(referenceOutputs.map((record) => formatToolPattern(record))),
-    new Set(currentOutputs.map((record) => formatToolPattern(record)))
-  );
+  const referencePatterns = new Set(referenceOutputs.map((record) => formatToolPattern(record)));
+  const currentPatterns = new Set(currentOutputs.map((record) => formatToolPattern(record)));
+  const toolCallDrift = jaccardSimilarity(referencePatterns, currentPatterns);
   const referenceP95 = percentile(referenceOutputs.map((record) => record.latency_ms), 95);
   const currentP95 = percentile(currentOutputs.map((record) => record.latency_ms), 95);
   const latencyDriftMs = Math.round(currentP95 - referenceP95);
@@ -462,6 +463,8 @@ export async function diffAgainstReference(options: {
     semantic_drift: semanticDrift,
     tool_call_drift: toolCallDrift,
     latency_drift_ms: latencyDriftMs,
+    tool_patterns_added: [...currentPatterns].filter((pattern) => !referencePatterns.has(pattern)),
+    tool_patterns_removed: [...referencePatterns].filter((pattern) => !currentPatterns.has(pattern)),
     divergent_cases: divergentCases.sort((left, right) => left.similarity - right.similarity),
     threshold_breaches: thresholdBreaches,
   };

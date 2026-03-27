@@ -53,6 +53,11 @@ import {
   diffAgainstReference,
 } from "./reference";
 import { loadRubric } from "./load-rubric";
+import {
+  writeEvalRunAuditRecord,
+  type AuditTraceRecord,
+  type EvalRunAuditRecord,
+} from "./report";
 
 export interface LocalRunCommandOptions {
   suite?: string;
@@ -184,6 +189,12 @@ interface EvalRunManifest {
     divergent_cases: string[];
     threshold_breaches: DriftThresholdBreach[];
   };
+}
+
+interface TraceStore {
+  record: (trace: AgentTrace) => void;
+  claim: (caseResult: EvalCaseResult) => AgentTrace | null;
+  match: (caseResult: EvalCaseResult) => AgentTrace | null;
 }
 
 interface DatasetChange {
@@ -1015,7 +1026,7 @@ function buildTraceLookupKey(
   ]);
 }
 
-function createTraceStore() {
+function createTraceStore(): TraceStore {
   const tracesByKey = new Map<string, AgentTrace[]>();
 
   return {
@@ -1059,6 +1070,35 @@ function createTraceStore() {
       );
       const existing = tracesByKey.get(key);
       return existing?.shift() ?? null;
+    },
+    match(caseResult: EvalCaseResult): AgentTrace | null {
+      const conversationTurns = caseResult.conversation_turn_results ?? [];
+      for (let index = conversationTurns.length - 1; index >= 0; index -= 1) {
+        const turn = conversationTurns[index];
+        if (!turn) {
+          continue;
+        }
+
+        const key = buildTraceLookupKey(
+          turn.input,
+          turn.output,
+          turn.inputTokens,
+          turn.outputTokens
+        );
+        const existing = tracesByKey.get(key);
+        if (existing && existing.length > 0) {
+          return existing[0] ?? null;
+        }
+      }
+
+      const key = buildTraceLookupKey(
+        caseResult.input,
+        caseResult.output,
+        caseResult.inputTokens,
+        caseResult.outputTokens
+      );
+      const existing = tracesByKey.get(key);
+      return existing?.[0] ?? null;
     },
   };
 }
@@ -1176,6 +1216,208 @@ async function writeFailedCaseTraces(
   }
 
   return written;
+}
+
+function formatAuditCaseId(
+  suiteName: string,
+  testCase: EvalCase | undefined,
+  index: number
+): string {
+  const explicitId = testCase?.id?.trim();
+  if (explicitId && explicitId.length > 0) {
+    return explicitId;
+  }
+
+  return `${suiteName}:case_${String(index + 1)}`;
+}
+
+function summarizeAuditTools(trace: AgentTrace): AuditTraceRecord["tools_called"] {
+  return trace.tool_calls.map((toolCall) => ({
+    tool_name: toolCall.tool_name,
+    data_accessed: [...toolCall.data_accessed],
+  }));
+}
+
+function createAuditTraceRecord(
+  trace: AgentTrace,
+  suiteName: string,
+  caseId: string,
+  passed: boolean,
+  flags: TraceFlag[]
+): AuditTraceRecord {
+  return {
+    trace_id: trace.trace_id,
+    suite_name: suiteName,
+    case_id: caseId,
+    passed,
+    input: trace.input,
+    output: trace.output,
+    tools_called: summarizeAuditTools(trace),
+    flags: [...flags],
+    duration_ms: trace.duration_ms,
+    started_at: trace.started_at,
+    model: trace.model,
+    model_version: trace.model_version,
+    prompt_hash: trace.prompt_hash,
+    consensus_result: trace.consensus_result ?? null,
+    source: "eval-run",
+  };
+}
+
+function createSyntheticConsensusAuditTrace(
+  runId: string,
+  runTimestamp: string,
+  suite: ParsedSuite,
+  caseId: string,
+  caseResult: EvalCaseResult
+): AuditTraceRecord {
+  const modelIds =
+    caseResult.consensus_result?.responses.map(
+      (response) => `${response.provider}:${response.model}`
+    ) ?? [];
+
+  return {
+    trace_id: `audit-${runId}-${caseId.replace(/[^a-zA-Z0-9_-]/g, "-")}`,
+    suite_name: suite.name,
+    case_id: caseId,
+    passed: caseResult.passed,
+    input: caseResult.input,
+    output: caseResult.output,
+    tools_called: [],
+    flags: buildEvalFailureFlags(suite, caseResult),
+    duration_ms: caseResult.latencyMs,
+    started_at: runTimestamp,
+    model: "consensus",
+    model_version: modelIds.join(","),
+    prompt_hash: null,
+    consensus_result: caseResult.consensus_result ?? null,
+    source: "eval-run",
+  };
+}
+
+function collectAuditTraces(
+  runId: string,
+  runTimestamp: string,
+  agentId: string,
+  completedSuites: CompletedSuiteRun[],
+  traceStore: TraceStore
+): AuditTraceRecord[] {
+  const auditTraces: AuditTraceRecord[] = [];
+
+  completedSuites.forEach((suiteRun) => {
+    suiteRun.result.cases.forEach((caseResult, index) => {
+      const caseId = formatAuditCaseId(suiteRun.suite.name, suiteRun.cases[index], index);
+
+      if (suiteRun.suite.type === "consensus") {
+        auditTraces.push(
+          createSyntheticConsensusAuditTrace(
+            runId,
+            runTimestamp,
+            suiteRun.suite,
+            caseId,
+            caseResult
+          )
+        );
+        return;
+      }
+
+      const matchedTrace =
+        traceStore.match(caseResult) ??
+        createFallbackFailureTrace(runId, agentId, suiteRun.suite, caseResult);
+      const flags = mergeTraceFlags([
+        ...matchedTrace.flags,
+        ...buildEvalFailureFlags(suiteRun.suite, caseResult),
+      ]);
+
+      auditTraces.push(
+        createAuditTraceRecord(matchedTrace, suiteRun.suite.name, caseId, caseResult.passed, flags)
+      );
+    });
+  });
+
+  return auditTraces;
+}
+
+function collectObservedModelMetadata(traces: AuditTraceRecord[]): {
+  modelNames: string[];
+  modelVersions: string[];
+  promptHashes: string[];
+} {
+  const normalize = (values: Array<string | null>) =>
+    [...new Set(values.filter((value): value is string => Boolean(value) && value !== "unknown"))].sort();
+
+  return {
+    modelNames: normalize(traces.map((trace) => trace.model)),
+    modelVersions: normalize(traces.map((trace) => trace.model_version)),
+    promptHashes: normalize(traces.map((trace) => trace.prompt_hash)),
+  };
+}
+
+function buildEvalRunAuditRecord(options: {
+  runId: string;
+  runTimestamp: string;
+  commit: string | null;
+  agentConfig: ParsedConfig["agent"];
+  agentId: string;
+  completedSuites: CompletedSuiteRun[];
+  traceStore: TraceStore;
+  diffReport: DiffReport;
+}): EvalRunAuditRecord {
+  const traces = collectAuditTraces(
+    options.runId,
+    options.runTimestamp,
+    options.agentId,
+    options.completedSuites,
+    options.traceStore
+  );
+  const observed = collectObservedModelMetadata(traces);
+
+  return {
+    version: 1,
+    run_id: options.runId,
+    timestamp: options.runTimestamp,
+    commit: options.commit,
+    agent: {
+      id: options.agentId,
+      type: options.agentConfig.type,
+      target:
+        options.agentConfig.type === "http"
+          ? options.agentConfig.endpoint ?? null
+          : options.agentConfig.type === "cli"
+            ? options.agentConfig.command ?? null
+            : options.agentConfig.module ?? null,
+    },
+    overall_passed: options.completedSuites.every((suiteRun) =>
+      isSuitePassed(suiteRun.suite, suiteRun.result)
+    ),
+    model_names: observed.modelNames,
+    model_versions: observed.modelVersions,
+    prompt_hashes: observed.promptHashes,
+    suites: options.completedSuites.map((suiteRun) => {
+      const diffSuite = options.diffReport.suites[suiteRun.suite.name];
+      const baselineDelta =
+        typeof diffSuite?.baselineScore === "number"
+          ? diffSuite.score - diffSuite.baselineScore
+          : null;
+
+      return {
+        name: suiteRun.suite.name,
+        strategy: suiteRun.suite.type,
+        case_count: suiteRun.caseCount,
+        pass_rate:
+          suiteRun.result.totalCases === 0
+            ? 0
+            : suiteRun.result.passedCases / suiteRun.result.totalCases,
+        score: suiteRun.result.score,
+        passed: isSuitePassed(suiteRun.suite, suiteRun.result),
+        threshold: suiteRun.result.threshold,
+        dataset_hash: suiteRun.datasetHash,
+        dataset_path: suiteRun.datasetPath,
+        baseline_delta: baselineDelta,
+      };
+    }),
+    traces,
+  };
 }
 
 function renderTable(rows: LocalSuiteSummaryRow[]): string {
@@ -2005,6 +2247,19 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
   }
 
   await writeEvalRunManifest(cwd, manifest);
+  await writeEvalRunAuditRecord(
+    cwd,
+    buildEvalRunAuditRecord({
+      runId,
+      runTimestamp: manifest.timestamp,
+      commit: currentCommit,
+      agentConfig: config.agent,
+      agentId,
+      completedSuites,
+      traceStore,
+      diffReport,
+    })
+  );
   const failedCaseTraceCount = await writeFailedCaseTraces(
     cwd,
     runId,
