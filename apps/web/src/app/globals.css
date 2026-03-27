@@ -46,3 +46,22 @@ body {
 ::selection {
   background: var(--cyan-dim);
 }
+
+@media (pointer: fine) {
+  body {
+    cursor: none;
+  }
+
+  a,
+  button,
+  input,
+  textarea,
+  select,
+  label,
+  summary,
+  [role="button"],
+  [role="tab"],
+  [data-native-cursor="true"] {
+    cursor: auto;
+  }
+}

@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { CustomCursor } from "../components/landing/CustomCursor";
 import { Providers } from "../components/providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Agentura",
-  description: "AI agent eval CI/CD platform",
+  description: "CI/CD for AI agents. Catch prompt regressions before they ship.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -21,6 +22,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
         <Providers>{children}</Providers>
+        <CustomCursor />
         <div
           aria-hidden="true"
           style={{
