@@ -33,6 +33,34 @@ no login, no GitHub App, no cloud calls required.
   HTTP endpoint
 - Self-hostable and open source (MIT)
 
+## Multi-turn eval
+
+Most eval tools only test single questions. Agentura tests
+whether your agent behaves consistently across realistic
+multi-step workflows.
+
+```json
+{
+  "conversation": [
+    {"role": "user", "content": "I'm on the Pro plan, what storage do I get?"},
+    {"role": "assistant", "expected": "Pro plan includes 100GB storage"},
+    {"role": "user", "content": "Can I upgrade individual team members?"},
+    {"role": "assistant", "expected": "Yes, you can manage seats in Settings > Team"}
+  ],
+  "eval_turns": [2, 4]
+}
+```
+
+This catches failures that single-turn evals miss:
+- Agent honors constraints from turn 1 but drifts by turn 4
+- Agent gives tier-specific answers only when account context
+  was established earlier in the conversation
+- Agent references specific details from prior turns rather
+  than giving generic responses
+
+See [examples/anthropic-agent](examples/anthropic-agent) for
+a complete walkthrough.
+
 ## Quick Start (with GitHub integration)
 
 1. Install the GitHub App →
@@ -48,6 +76,7 @@ Full guide: [docs/quickstart.md](docs/quickstart.md)
 | Framework | Example |
 |---|---|
 | OpenAI Agents SDK | [examples/openai-agent](examples/openai-agent) |
+| Anthropic Claude | [examples/anthropic-agent](examples/anthropic-agent) |
 | LangChain | [examples/langchain-agent](examples/langchain-agent) |
 | Any HTTP endpoint | [examples/http-agent](examples/http-agent) |
 

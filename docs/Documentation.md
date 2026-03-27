@@ -2329,3 +2329,37 @@ Milestone 19 — reconcile the remaining in-app docs pages and worker-side confi
 
 **Next session:**
 Milestone 19 — continue reconciling the remaining docs surfaces so the markdown docs and in-app docs stay aligned.
+
+## Session — 2026-03-27 06:04 UTC
+
+**Milestone:** 19 — Dashboard Polish + Settings
+**Status:** COMPLETE
+
+**Files created:**
+- `examples/anthropic-agent/package.json` — added a standalone Anthropic Claude example package definition outside the workspace
+- `examples/anthropic-agent/agent.ts` — added a Flowdesk support agent HTTP server that forwards full conversation history to the Anthropic Messages API
+- `examples/anthropic-agent/agentura.yaml` — added local eval configuration covering single-turn accuracy, multi-turn consistency, and llm_judge quality
+- `examples/anthropic-agent/evals/accuracy.jsonl` — added eight Flowdesk support cases mixing straightforward checks with a couple of likely edge cases
+- `examples/anthropic-agent/evals/conversation.jsonl` — added four multi-turn workflows covering instruction drift, competitor constraints, context carryover, and bug-triage detail retention
+- `examples/anthropic-agent/evals/quality.jsonl` — added five llm_judge prompts focused on helpfulness, tone, and constraint adherence
+- `examples/anthropic-agent/evals/quality_rubric.md` — added a concise pass/fail rubric for helpfulness, consistency, and rule-following
+- `examples/anthropic-agent/README.md` — documented setup, multi-turn format, and no-extra-config Anthropic usage for the example
+
+**Files modified:**
+- `README.md` — added a prominent multi-turn eval section and linked the new Anthropic example from the framework table
+- `docs/strategies.md` — expanded the multi-turn section around real failure modes, targeted `eval_turns`, and the Flowdesk conversation format
+- `docs/Documentation.md` — appended this session summary
+
+**Decisions made:**
+- Kept the Anthropic example standalone and intentionally small so it mirrors the existing examples without changing workspace wiring.
+- Centered the example and docs on multi-turn failure modes rather than generic conversation replay so the differentiator is obvious from the first read.
+
+**Validation results:**
+- `pnpm type-check`: PASS
+- `git diff --check`: PASS
+
+**Issues found:**
+- Did not run example-specific `npm install` or a live Anthropic request because that example is intentionally standalone and depends on a user-provided `ANTHROPIC_API_KEY`.
+
+**Next session:**
+Milestone 19 — reconcile the in-app docs pages and any remaining marketing copy so multi-turn eval is highlighted consistently across the site and examples.

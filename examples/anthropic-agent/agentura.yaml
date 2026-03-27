@@ -1,0 +1,22 @@
+version: 1
+agent:
+  type: http
+  endpoint: http://localhost:3459/invoke
+  timeout_ms: 30000
+evals:
+  - name: accuracy
+    type: golden_dataset
+    dataset: ./evals/accuracy.jsonl
+    scorer: fuzzy_match
+    threshold: 0.7
+  - name: consistency
+    type: golden_dataset
+    dataset: ./evals/conversation.jsonl
+    scorer: fuzzy_match
+    threshold: 0.7
+  - name: quality
+    type: llm_judge
+    dataset: ./evals/quality.jsonl
+    rubric: ./evals/quality_rubric.md
+    runs: 3
+    threshold: 0.7

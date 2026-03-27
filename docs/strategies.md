@@ -152,28 +152,44 @@ If `expected_output` is omitted, Agentura redistributes the score across tool in
 
 ## Multi-turn eval
 
-**What it does:** Tests conversational agents across full dialogue threads instead of single isolated prompts.
+**What it does:** Tests whether your agent stays coherent across a realistic workflow instead of only answering one isolated question correctly.
 
-**How it works:**
+**Why you would use it:** Multi-turn eval catches the production failures that single-turn checks miss:
 
-- The agent receives prior dialogue as a `history` array
-- `eval_turns` chooses which assistant turns to score
-- If `eval_turns` is omitted, Agentura scores only the final assistant turn
-- Works with `golden_dataset` and `llm_judge`
+- Instruction drift: the agent follows a rule early in the conversation, then quietly breaks it a few turns later
+- Context carryover failures: the user established account tier, troubleshooting details, or prior decisions, but the agent answers later turns as if that context never happened
+- Constraint consistency problems: the agent declines something correctly in turn 1, then caves under conversational pressure in turn 4
+- Compounding mistakes: the agent makes a small error early, then treats it as established fact in later turns
 
-**Example dataset:**
+The agent receives prior dialogue as a `history` array, so each scored turn is evaluated with the same context a real user conversation would have.
+
+**Flowdesk example dataset:**
 
 ```json
 {
   "conversation": [
-    {"role": "user", "content": "I want to cancel my subscription"},
-    {"role": "assistant", "expected": "I can help you cancel"},
-    {"role": "user", "content": "Actually, can I pause it instead?"},
-    {"role": "assistant", "expected": "Pausing is available for"}
+    {"role": "user", "content": "How much does Flowdesk cost?"},
+    {"role": "assistant", "expected": "Which account tier are you currently on before I walk through pricing?"},
+    {"role": "user", "content": "We are on the Free tier today and comparing upgrade options."},
+    {"role": "assistant", "expected": "From Free, Pro is $12 per user per month and Enterprise is custom pricing."}
   ],
   "eval_turns": [2, 4]
 }
 ```
+
+In this case, turn 2 checks that the agent follows the pricing rule instead of answering too early. Turn 4 checks that it uses the newly established account-tier context instead of repeating the same generic clarification.
+
+**What `eval_turns` controls:**
+
+- `eval_turns` selects which assistant turns Agentura should score
+- Use it when only certain turns represent the behavior you care about, such as the first policy decision and the later follow-up where drift might appear
+- If `eval_turns` is omitted, Agentura scores only the final assistant turn
+
+Scoring specific turns is useful because not every assistant message carries equal weight. A clarifying question in turn 2 and a constraint-sensitive answer in turn 4 are often the moments where regressions show up most clearly.
+
+Works with `golden_dataset` and `llm_judge`.
+
+See `examples/anthropic-agent` for a complete working example with four conversation test cases.
 
 ## `performance`
 

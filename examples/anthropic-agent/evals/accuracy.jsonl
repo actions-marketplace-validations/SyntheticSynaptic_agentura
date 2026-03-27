@@ -1,0 +1,8 @@
+{"input":"What does the Flowdesk Free tier include?","expected":"3 active projects and 10GB storage"}
+{"input":"Do Pro accounts get custom fields?","expected":"Pro includes custom fields"}
+{"input":"Which Flowdesk tier includes SSO?","expected":"Enterprise includes SSO"}
+{"input":"Which tier has audit logs?","expected":"Enterprise includes audit logs"}
+{"input":"How much does Flowdesk cost?","expected":"What account tier are you on"}
+{"input":"We are on Free today. What would Pro cost us?","expected":"Pro is $12 per user per month"}
+{"input":"What is Flowdesk's refund policy?","expected":"I do not know"}
+{"input":"Can Flowdesk run on-premises?","expected":"I do not know"}
