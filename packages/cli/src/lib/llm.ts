@@ -24,6 +24,12 @@ interface GroqClient {
 }
 
 type GroqConstructor = new (options: { apiKey: string }) => GroqClient;
+type CallLLMInput =
+  | string
+  | {
+      prompt: string;
+      systemPrompt?: string;
+    };
 
 function importModule(specifier: string): Promise<unknown> {
   const importer = Function("specifier", "return import(specifier)") as (
@@ -90,13 +96,17 @@ function extractText(response: GroqCompletionResponse): string {
   return "";
 }
 
-export async function callLLM(prompt: string): Promise<string> {
+export async function callLLM(inputValue: CallLLMInput): Promise<string> {
   const apiKey = await getGroqApiKey();
   if (!apiKey) {
     throw new Error(
       "No Groq API key found. Set GROQ_API_KEY or run agentura generate and enter it when prompted."
     );
   }
+
+  const prompt = typeof inputValue === "string" ? inputValue : inputValue.prompt;
+  const systemPrompt =
+    typeof inputValue === "string" ? undefined : inputValue.systemPrompt?.trim() || undefined;
 
   try {
     const moduleNamespace = (await importModule("groq-sdk")) as { default?: GroqConstructor };
@@ -111,7 +121,12 @@ export async function callLLM(prompt: string): Promise<string> {
       model: "llama-3.3-70b-versatile",
       max_tokens: 4000,
       temperature: 0.7,
-      messages: [{ role: "user", content: prompt }],
+      messages: systemPrompt
+        ? [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: prompt },
+          ]
+        : [{ role: "user", content: prompt }],
     });
 
     const text = extractText(response);

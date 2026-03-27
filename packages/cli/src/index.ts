@@ -31,6 +31,10 @@ program
   .description("Generate eval test cases for your agent using AI")
   .option("--description <text>", "Agent description (skips interactive prompt)")
   .option("--no-probe", "Skip probing the live agent endpoint")
+  .option(
+    "--adversarial",
+    "Generate failure-focused adversarial cases instead of typical user cases"
+  )
   .option("--count <n>", "Number of test cases to generate (default: 15)", "15")
   .action(generateCommand);
 

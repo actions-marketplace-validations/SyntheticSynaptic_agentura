@@ -2243,3 +2243,33 @@ Milestone 19 — continue the dashboard polish work and reconcile the remaining 
 
 **Next session:**
 Milestone 19 — continue the remaining dashboard/settings polish work and reconcile the in-app docs pages that still reference older scorer and performance terminology.
+
+## Session — 2026-03-27 01:03 UTC
+
+**Milestone:** 19 — Dashboard Polish + Settings
+**Status:** COMPLETE
+
+**Files created:**
+- None
+
+**Files modified:**
+- `packages/cli/src/commands/generate.ts` — added explicit typical vs adversarial generation modes, moved case generation onto a real system prompt, and exported prompt helpers for tests
+- `packages/cli/src/index.ts` — added `agentura generate --adversarial`
+- `packages/cli/src/lib/llm.ts` — added optional system prompt support for Groq-backed generation calls
+- `packages/cli/src/commands/run.test.ts` — added coverage for the new adversarial prompt mode and CLI help output
+- `docs/Documentation.md` — appended this session summary
+
+**Decisions made:**
+- Kept typical generation as the default to preserve existing `agentura generate` behavior and made adversarial generation an explicit opt-in with `--adversarial`.
+- Split the generation request into system and user prompts so the mode switch has a strong, isolated instruction channel instead of competing with formatting guidance in one long prompt.
+- Removed happy-path guidance from adversarial mode so the prompt consistently targets failure modes rather than representative coverage.
+
+**Validation results:**
+- `pnpm type-check`: PASS
+- `pnpm test`: PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Milestone 19 — continue the remaining dashboard/settings polish work and revisit docs for `agentura generate` if the CLI surface expands beyond the new adversarial mode.

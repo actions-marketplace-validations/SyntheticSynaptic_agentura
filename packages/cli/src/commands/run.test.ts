@@ -5,6 +5,7 @@ import path from "node:path";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { __testing as generateTesting } from "./generate";
 import { __testing } from "../lib/local-run";
 
 const CLI_ENTRY = path.resolve(__dirname, "..", "..", "dist", "index.js");
@@ -139,6 +140,47 @@ test("low agreement warnings are generated for llm_judge suites below the reliab
     "⚠ quality: low judge agreement (0.61).",
     "  Results may be unreliable. Consider revising your rubric.",
   ]);
+});
+
+test("generate defaults to a typical-case system prompt and can switch to adversarial mode", () => {
+  assert.equal(
+    generateTesting.getGenerationMode({}),
+    "typical"
+  );
+  assert.equal(
+    generateTesting.buildDatasetSystemPrompt("typical"),
+    "Generate realistic test cases that represent typical user interactions with this agent."
+  );
+
+  assert.equal(
+    generateTesting.getGenerationMode({ adversarial: true }),
+    "adversarial"
+  );
+  assert.equal(
+    generateTesting.buildDatasetSystemPrompt("adversarial"),
+    `Generate adversarial test cases specifically designed to expose failures in this agent.
+Focus on: edge cases the agent is likely to handle poorly, inputs that could cause hallucination or refusal, ambiguous queries where the agent might confidently give a wrong answer, boundary conditions, and inputs that exploit common weaknesses of LLM-based agents in this domain. Each case should test a distinct failure mode.`
+  );
+
+  const adversarialPrompt = generateTesting.buildDatasetPrompt({
+    description: "support bot",
+    probeResults: [],
+    count: 3,
+    strict: false,
+    mode: "adversarial",
+  });
+  assert.match(adversarialPrompt, /adversarial test cases/);
+  assert.match(adversarialPrompt, /Prioritize adversarial coverage over representative coverage/);
+  assert.doesNotMatch(adversarialPrompt, /Cover happy path cases/);
+});
+
+test("generate --help documents the adversarial flag", async () => {
+  const result = await runCli(process.cwd(), ["generate", "--help"]);
+  const output = stripAnsi(result.output);
+
+  assert.equal(result.code, 0);
+  assert.match(output, /--adversarial/);
+  assert.match(output, /failure-focused adversarial cases/i);
 });
 
 test("baseline snapshots preserve all judge scores for multi-run llm_judge cases", () => {

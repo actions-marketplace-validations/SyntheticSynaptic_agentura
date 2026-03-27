@@ -12,6 +12,7 @@ interface GenerateCommandOptions {
   description?: string;
   probe?: boolean;
   count?: string;
+  adversarial?: boolean;
 }
 
 interface AgenturaConfig {
@@ -33,6 +34,8 @@ interface GeneratedCase {
   input: string;
   expected: string;
 }
+
+type CaseGenerationMode = "typical" | "adversarial";
 
 const DEFAULT_CASE_COUNT = 15;
 const PROBE_TIMEOUT_MS = 10_000;
@@ -91,6 +94,10 @@ function parseCaseCount(rawCount: string | undefined): number {
   }
 
   return parsed;
+}
+
+function getGenerationMode(options: GenerateCommandOptions): CaseGenerationMode {
+  return options.adversarial ? "adversarial" : "typical";
 }
 
 async function readAgenturaConfig(): Promise<AgenturaConfig> {
@@ -159,11 +166,21 @@ async function probeAgent(endpoint: string): Promise<ProbeResult[]> {
   return results;
 }
 
+function buildDatasetSystemPrompt(mode: CaseGenerationMode): string {
+  if (mode === "adversarial") {
+    return `Generate adversarial test cases specifically designed to expose failures in this agent.
+Focus on: edge cases the agent is likely to handle poorly, inputs that could cause hallucination or refusal, ambiguous queries where the agent might confidently give a wrong answer, boundary conditions, and inputs that exploit common weaknesses of LLM-based agents in this domain. Each case should test a distinct failure mode.`;
+  }
+
+  return "Generate realistic test cases that represent typical user interactions with this agent.";
+}
+
 function buildDatasetPrompt(args: {
   description: string;
   probeResults: ProbeResult[];
   count: number;
   strict: boolean;
+  mode: CaseGenerationMode;
 }): string {
   const probeSection =
     args.probeResults.length > 0
@@ -187,20 +204,33 @@ A: "${args.probeResults[2]?.response ?? ""}"
       )} lines. Every line must be valid JSON with "input" and "expected".`
     : "";
 
+  const generationLine =
+    args.mode === "adversarial"
+      ? `Generate exactly ${String(args.count)} adversarial test cases for this agent as JSONL.`
+      : `Generate exactly ${String(args.count)} test cases for this agent as JSONL.`;
+
+  const modeRequirements =
+    args.mode === "adversarial"
+      ? `- Prioritize adversarial coverage over representative coverage
+- Focus on distinct failure modes instead of happy-path repetition
+- Use realistic but difficult inputs that stress likely weaknesses
+- Target edge cases, ambiguity, hallucination risk, refusal risk, and boundary conditions`
+      : `- Make inputs realistic — things actual users would type
+- Cover happy path cases (normal usage)
+- Cover edge cases (ambiguous queries, unusual requests)
+- Cover failure modes (things the agent should handle gracefully)`;
+
   return `You are an expert at writing eval test cases for AI agents.
 
 Agent description: ${args.description}
 ${probeSection}
-Generate exactly ${String(args.count)} test cases for this agent as JSONL.
+${generationLine}
 Each line must be a valid JSON object with these fields:
 - "input": a realistic question or message a user would send
 - "expected": the ideal response or key information the response must contain
 
 Requirements:
-- Make inputs realistic — things actual users would type
-- Cover happy path cases (normal usage)
-- Cover edge cases (ambiguous queries, unusual requests)
-- Cover failure modes (things the agent should handle gracefully)
+${modeRequirements}
 - CRITICAL RULES FOR EXPECTED VALUES:
 - Expected must be a single specific fact from the
   response — a number, a product name, or a 1-3 word
@@ -314,6 +344,7 @@ async function generateCases(args: {
   description: string;
   probeResults: ProbeResult[];
   count: number;
+  mode: CaseGenerationMode;
 }): Promise<GeneratedCase[]> {
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const prompt = buildDatasetPrompt({
@@ -321,9 +352,13 @@ async function generateCases(args: {
       probeResults: args.probeResults,
       count: args.count,
       strict: attempt === 2,
+      mode: args.mode,
     });
 
-    const response = await callLLM(prompt);
+    const response = await callLLM({
+      systemPrompt: buildDatasetSystemPrompt(args.mode),
+      prompt,
+    });
     const parsedCases = parseGeneratedCases(response);
 
     if (parsedCases.length >= args.count) {
@@ -428,6 +463,7 @@ export async function generateCommand(options: GenerateCommandOptions = {}): Pro
   try {
     const config = await readAgenturaConfig();
     const count = parseCaseCount(options.count);
+    const mode = getGenerationMode(options);
     const nonInteractive = Boolean(options.description) && options.probe === false;
 
     console.log(chalk.green("✨ Agentura Generate"));
@@ -470,11 +506,18 @@ export async function generateCommand(options: GenerateCommandOptions = {}): Pro
       }
     }
 
-    console.log(chalk.gray("⚡ Generating eval cases..."));
+    console.log(
+      chalk.gray(
+        mode === "adversarial"
+          ? "⚡ Generating adversarial eval cases..."
+          : "⚡ Generating eval cases..."
+      )
+    );
     const generatedCases = await generateCases({
       description,
       probeResults,
       count,
+      mode,
     });
 
     await delay(500);
@@ -577,3 +620,9 @@ export async function generateCommand(options: GenerateCommandOptions = {}): Pro
     process.exit(1);
   }
 }
+
+export const __testing = {
+  buildDatasetPrompt,
+  buildDatasetSystemPrompt,
+  getGenerationMode,
+};
