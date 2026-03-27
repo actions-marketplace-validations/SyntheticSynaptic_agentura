@@ -76,6 +76,38 @@ const evalSuiteBaseSchema = z.object({
   threshold: z.number().min(0).max(1),
 });
 
+const consensusModelSchema = z
+  .union([
+    z.object({
+      provider: z.enum(["anthropic", "openai", "google", "gemini"]),
+      model: z.string().min(1),
+    }),
+    z.string().min(1),
+  ])
+  .transform((value) => {
+    if (typeof value === "string") {
+      const [rawProvider, ...modelParts] = value.split(":");
+      const provider = rawProvider?.trim().toLowerCase();
+      const model = modelParts.join(":").trim();
+
+      if (!provider || !model) {
+        throw new Error(
+          `invalid consensus model "${value}". Expected provider:model`
+        );
+      }
+
+      return {
+        provider: provider === "gemini" ? "google" : provider,
+        model,
+      };
+    }
+
+    return {
+      provider: value.provider === "gemini" ? "google" : value.provider,
+      model: value.model,
+    };
+  });
+
 const goldenDatasetSuiteSchema = evalSuiteBaseSchema.extend({
   type: z.literal("golden_dataset"),
   scorer: z.enum(["exact_match", "fuzzy_match", "semantic_similarity", "contains"]).optional(),
@@ -97,11 +129,17 @@ const toolUseSuiteSchema = evalSuiteBaseSchema.extend({
   type: z.literal("tool_use"),
 });
 
+const consensusSuiteSchema = evalSuiteBaseSchema.extend({
+  type: z.literal("consensus"),
+  models: z.array(consensusModelSchema).min(2),
+});
+
 const evalSuiteSchema = z.discriminatedUnion("type", [
   goldenDatasetSuiteSchema,
   llmJudgeSuiteSchema,
   performanceSuiteSchema,
   toolUseSuiteSchema,
+  consensusSuiteSchema,
 ]);
 
 const ciSchema = z.object({
@@ -117,6 +155,15 @@ const agenturaConfigSchema = z.object({
   agent: agentConfigSchema,
   evals: z.array(evalSuiteSchema),
   ci: ciSchema,
+  consensus: z
+    .object({
+      models: z.array(consensusModelSchema).min(2),
+      agreement_threshold: z.number().min(0).max(1).default(0.8),
+      on_disagreement: z.enum(["flag", "escalate", "reject"]).default("flag"),
+      scope: z.enum(["all", "high_stakes_only"]).default("high_stakes_only"),
+      high_stakes_tools: z.array(z.string().min(1)).default([]),
+    })
+    .optional(),
 });
 
 const jsonValueSchema: z.ZodType<unknown> = z.lazy(() =>

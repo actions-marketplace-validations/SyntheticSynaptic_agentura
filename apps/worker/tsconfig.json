@@ -10,6 +10,10 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@agentura/core": ["../../packages/core/dist"]
+    },
     "outDir": "dist",
     "rootDir": "src"
   },

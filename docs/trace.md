@@ -22,6 +22,7 @@ interface AgentTrace {
   token_usage: { input: number; output: number }
   duration_ms: number
   flags: TraceFlag[]
+  consensus_result?: ConsensusResult | null
 }
 ```
 
@@ -30,8 +31,13 @@ interface AgentTrace {
 `flags` currently support:
 
 - `consensus_disagreement`
+- `degraded_consensus`
 - `no_tool_call_expected`
 - `latency_exceeded`
+
+When a trace comes from `agentura consensus` or from a consensus-backed eval suite,
+`consensus_result` stores the per-model responses, agreement rate, winning response,
+and any dissenting models so disagreements can be audited later.
 
 ## CLI commands
 

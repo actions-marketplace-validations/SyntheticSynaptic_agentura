@@ -5,6 +5,8 @@ import path from "node:path";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { buildConsensusTraceFlags, runConsensus } from "@agentura/core";
+import { __testing as consensusCommandTesting } from "./consensus";
 import { __testing as generateTesting } from "./generate";
 import { __testing } from "../lib/local-run";
 
@@ -1388,4 +1390,110 @@ ci:
   assert.equal(trace.model, "demo-model");
   assert.equal(trace.model_version, "demo-model-v1");
   assert.deepEqual(trace.flags, [{ type: "no_tool_call_expected" }]);
+});
+
+test("consensus command parser normalizes provider aliases and validates threshold", () => {
+  assert.deepEqual(consensusCommandTesting.parseModelsOption("anthropic:claude-sonnet-4-6,gemini:gemini-pro"), [
+    { provider: "anthropic", model: "claude-sonnet-4-6" },
+    { provider: "google", model: "gemini-pro" },
+  ]);
+  assert.equal(consensusCommandTesting.parseThreshold("0.61"), 0.61);
+  assert.throws(() => consensusCommandTesting.parseThreshold("1.2"));
+});
+
+test("runConsensus uses majority selection and marks dissenting models below threshold", async () => {
+  const result = await runConsensus(
+    "What is the recommended next step for this patient?",
+    [
+      { provider: "anthropic", model: "claude-sonnet-4-6" },
+      { provider: "openai", model: "gpt-4o" },
+      { provider: "google", model: "gemini-pro" },
+    ],
+    {
+      agreementThreshold: 0.8,
+      callModel: async (_input, model) => {
+        if (model.provider === "openai") {
+          return {
+            provider: model.provider,
+            model: model.model,
+            response: "Watchful waiting for 6 months",
+            latency_ms: 14,
+          };
+        }
+
+        return {
+          provider: model.provider,
+          model: model.model,
+          response: "Order CPET now",
+          latency_ms: 12,
+        };
+      },
+      similarityScorer: async (left, right) => (left === right ? 1 : 0.6),
+    }
+  );
+
+  assert.equal(result.winning_response, "Order CPET now");
+  assert.ok(Math.abs(result.agreement_rate - ((1 + 0.6 + 0.6) / 3)) < 1e-9);
+  assert.deepEqual(result.dissenting_models, ["openai:gpt-4o"]);
+  assert.deepEqual(result.flag, {
+    type: "consensus_disagreement",
+    agreement_rate: (1 + 0.6 + 0.6) / 3,
+  });
+});
+
+test("buildConsensusTraceFlags records degraded consensus alongside disagreement when providers fail", () => {
+  const flags = buildConsensusTraceFlags(
+    {
+      winning_response: "Escalate to cardiology",
+      agreement_rate: 0,
+      responses: [
+        {
+          provider: "anthropic",
+          model: "claude-sonnet-4-6",
+          response: "Escalate to cardiology",
+          latency_ms: 11,
+        },
+        {
+          provider: "openai",
+          model: "gpt-4o",
+          response: null,
+          latency_ms: 7,
+          error: "Missing OPENAI_API_KEY",
+        },
+      ],
+      dissenting_models: [],
+      flag: {
+        type: "consensus_disagreement",
+        agreement_rate: 0,
+      },
+    },
+    0.8
+  );
+
+  assert.deepEqual(flags, [
+    {
+      type: "degraded_consensus",
+      failed_models: ["openai:gpt-4o"],
+      successful_models: ["anthropic:claude-sonnet-4-6"],
+    },
+    {
+      type: "consensus_disagreement",
+      agreement_rate: 0,
+    },
+  ]);
+});
+
+test("low agreement warnings include consensus suites", () => {
+  const warnings = __testing.collectLowAgreementWarnings([
+    {
+      suiteName: "consensus_check",
+      strategy: "consensus",
+      agreement_rate: 0.61,
+    },
+  ]);
+
+  assert.deepEqual(warnings, [
+    "⚠ consensus_check: low consensus agreement (0.61).",
+    "  Responses diverged across model families. Human review is recommended.",
+  ]);
 });

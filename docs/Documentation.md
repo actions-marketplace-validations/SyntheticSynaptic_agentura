@@ -2409,3 +2409,49 @@ Milestone 19 — reconcile the in-app docs pages and any remaining marketing cop
 
 **Next session:**
 Milestone H follow-up — feed trace summaries into broader audit/reporting surfaces and start turning eval-failure traces into a first-class candidate-eval workflow.
+
+## Session — 2026-03-27 09:18 UTC
+
+**Milestone:** G — Heterogeneous Consensus Runtime
+**Status:** COMPLETE
+
+**Files created:**
+- `packages/core/src/consensus.ts` — added the heterogeneous consensus runtime, provider fan-out, majority/centroid winner selection, degraded mode handling, and disagreement flagging
+- `packages/core/src/trace-flags.ts` — centralized trace flag typing so consensus flags can be reused by the CLI and trace builder
+- `packages/cli/src/commands/consensus.ts` — added the `agentura consensus` command with trace output and disagreement reporting
+- `docs/consensus.md` — documented runtime config, CLI usage, degraded mode, eval suites, and required provider environment variables
+- `examples/openai-agent/evals/high_stakes.jsonl` — added a small high-stakes dataset for consensus eval examples
+
+**Files modified:**
+- `packages/types/src/index.ts` — added consensus config, model, result, and trace types plus the `consensus` eval strategy shape
+- `packages/core/src/trace.ts` — attached `consensus_result` to traces and wired the shared flag type through the trace builder
+- `packages/core/src/index.ts` — exported the new consensus helpers
+- `packages/core/package.json` — added the eval-runner workspace dependency required for shared semantic similarity scoring
+- `packages/core/tsconfig.json` — added the eval-runner path mapping for core builds
+- `packages/cli/src/index.ts` — registered the new `consensus` command
+- `packages/cli/src/lib/local-run.ts` — added `consensus` config parsing, consensus suite execution, trace flag integration, warnings, and verbose output
+- `packages/cli/src/commands/run.test.ts` — added coverage for consensus parsing, winner selection, degraded flags, and low-agreement warnings
+- `apps/worker/src/github/fetch-config.ts` — taught worker config parsing about consensus runtime and consensus eval suites
+- `apps/worker/src/queue-handlers/eval-run.ts` — added consensus suite execution in worker eval runs
+- `apps/worker/package.json` — added the shared core dependency for worker builds
+- `apps/worker/tsconfig.json` — added the core path mapping for worker compilation
+- `docs/trace.md` — documented `consensus_result` traces and the new `degraded_consensus` flag
+- `examples/openai-agent/agentura.yaml` — added top-level consensus runtime config and a `consensus_check` eval suite example
+- `docs/Documentation.md` — appended this session summary
+
+**Decisions made:**
+- Kept consensus in the shared core package so the CLI, worker, and future runtime surfaces all use the same provider fan-out and winner-selection logic.
+- Reused semantic similarity scoring for pairwise agreement so disagreement thresholds stay aligned with the rest of the eval system instead of introducing a second similarity implementation.
+- Treated single-provider or partially failed runs as degraded consensus and surfaced that explicitly in traces rather than pretending a fallback path is a clean agreement signal.
+- Added consensus as a first-class eval strategy so high-stakes datasets can fail directly on low agreement without requiring a separate post-processing step.
+
+**Validation results:**
+- `pnpm type-check`: PASS
+- `pnpm test`: PASS
+- `git diff --check`: PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Wire the top-level runtime `consensus` block into any future live agent invocation path that needs automatic high-stakes tool escalation beyond the dedicated CLI and eval flows.

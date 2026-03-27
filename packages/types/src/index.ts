@@ -5,6 +5,48 @@ export interface JsonObject {
   [key: string]: JsonValue;
 }
 
+export type ConsensusProvider = "anthropic" | "openai" | "google";
+
+export interface ConsensusModelConfig {
+  provider: ConsensusProvider;
+  model: string;
+}
+
+export type ConsensusOnDisagreement = "flag" | "escalate" | "reject";
+export type ConsensusScope = "all" | "high_stakes_only";
+
+export interface ConsensusConfig {
+  models: ConsensusModelConfig[];
+  agreement_threshold: number;
+  on_disagreement: ConsensusOnDisagreement;
+  scope: ConsensusScope;
+  high_stakes_tools?: string[];
+}
+
+export interface ModelResponse {
+  provider: ConsensusProvider;
+  model: string;
+  response: string | null;
+  latency_ms: number;
+  error?: string;
+}
+
+export type ConsensusTraceFlag =
+  | { type: "consensus_disagreement"; agreement_rate: number }
+  | {
+      type: "degraded_consensus";
+      failed_models: string[];
+      successful_models: string[];
+    };
+
+export interface ConsensusResult {
+  winning_response: string;
+  agreement_rate: number;
+  responses: ModelResponse[];
+  dissenting_models: string[];
+  flag: ConsensusTraceFlag | null;
+}
+
 export interface ToolCall {
   name: string;
   args?: JsonObject;
@@ -35,6 +77,7 @@ export interface AgenturaConfig {
   agent: AgentConfig;
   evals: EvalSuiteConfig[];
   ci: CIConfig;
+  consensus?: ConsensusConfig;
 }
 
 export interface AgentConfig {
@@ -47,7 +90,7 @@ export interface AgentConfig {
 
 export interface EvalSuiteConfig {
   name: string;
-  type: "golden_dataset" | "llm_judge" | "performance" | "tool_use";
+  type: "golden_dataset" | "llm_judge" | "performance" | "tool_use" | "consensus";
   dataset: string;
   scorer?: "exact_match" | "fuzzy_match" | "semantic_similarity" | "contains";
   rubric?: string;
@@ -56,6 +99,7 @@ export interface EvalSuiteConfig {
   threshold: number;
   max_p95_ms?: number;
   max_cost_per_call_usd?: number;
+  models?: ConsensusModelConfig[];
 }
 
 export interface CIConfig {
@@ -115,6 +159,7 @@ export interface EvalCaseResult {
   actual_tool_name?: string | null;
   actual_tool_args?: JsonObject | null;
   tool_calls?: ToolCall[];
+  consensus_result?: ConsensusResult;
   conversation_turn_results?: ConversationTurnResult[];
   latencyMs: number;
   inputTokens?: number;

@@ -5,10 +5,11 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "pnpm --dir ../types run build && tsc -p tsconfig.json",
-    "type-check": "pnpm --dir ../types run build && tsc --noEmit -p tsconfig.json"
+    "build": "pnpm --dir ../types run build && pnpm --dir ../eval-runner run build && tsc -p tsconfig.json",
+    "type-check": "pnpm --dir ../types run build && pnpm --dir ../eval-runner run build && tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@agentura/eval-runner": "workspace:*",
     "@agentura/types": "workspace:*"
   },
   "devDependencies": {

@@ -5,6 +5,21 @@ agent:
   endpoint: http://localhost:3456/invoke
   timeout_ms: 30000
 
+consensus:
+  models:
+    - provider: anthropic
+      model: claude-sonnet-4-6
+    - provider: openai
+      model: gpt-4o
+    - provider: google
+      model: gemini-pro
+  agreement_threshold: 0.80
+  on_disagreement: flag
+  scope: high_stakes_only
+  high_stakes_tools:
+    - retrieve_patient_record
+    - generate_recommendation
+
 evals:
   - name: accuracy
     type: golden_dataset
@@ -29,6 +44,18 @@ evals:
     dataset: ./evals/accuracy.jsonl
     max_p95_ms: 3000
     max_cost_per_call_usd: 0.01
+
+  - name: consensus_check
+    type: consensus
+    dataset: ./evals/high_stakes.jsonl
+    threshold: 0.80
+    models:
+      - provider: anthropic
+        model: claude-sonnet-4-6
+      - provider: openai
+        model: gpt-4o
+      - provider: google
+        model: gemini-pro
 
 ci:
   block_on_regression: true

@@ -11,6 +11,7 @@
     "rootDir": "src",
     "baseUrl": ".",
     "paths": {
+      "@agentura/eval-runner": ["../eval-runner/dist"],
       "@agentura/types": ["../types/dist"]
     }
   },

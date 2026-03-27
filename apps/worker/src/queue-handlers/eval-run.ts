@@ -1,3 +1,4 @@
+import { runConsensus } from "@agentura/core";
 import { Prisma, prisma } from "@agentura/db";
 import {
   callCliAgent,
@@ -14,9 +15,11 @@ import type {
   AgentConfig,
   AgentFunction,
   AgentCallResult,
+  ConsensusModelConfig,
   EvalCase,
   EvalCaseResult,
   EvalSuiteConfig,
+  ModelResponse,
   SuiteRunResult,
 } from "@agentura/types";
 import type { Job } from "bullmq";
@@ -212,6 +215,87 @@ async function runGoldenSuiteConcurrent(
     durationMs: Date.now() - startedAt,
     estimatedCostUsd: 0,
     cases: orderedCases,
+  };
+}
+
+async function runConsensusSuite(
+  suite: EvalSuiteConfig & { models?: ConsensusModelConfig[] },
+  cases: EvalCase[]
+): Promise<SuiteRunResult> {
+  const startedAt = Date.now();
+  const models = suite.models ?? [];
+  const caseResults = await Promise.all(
+    cases.map(async (evalCase, index): Promise<EvalCaseResult> => {
+      const input = getCaseInput(evalCase);
+
+      try {
+        const consensusResult = await runConsensus(input, models, {
+          agreementThreshold: suite.threshold,
+        });
+        const errors = consensusResult.responses
+          .map((response: ModelResponse) => response.error)
+          .filter((error: string | undefined): error is string => typeof error === "string" && error.length > 0);
+
+        return {
+          caseIndex: index,
+          input,
+          output:
+            consensusResult.winning_response.length > 0
+              ? consensusResult.winning_response
+              : null,
+          expected: evalCase.expected,
+          score: consensusResult.agreement_rate,
+          passed: consensusResult.agreement_rate >= suite.threshold,
+          agreement_rate: consensusResult.agreement_rate,
+          consensus_result: consensusResult,
+          latencyMs: consensusResult.responses.reduce(
+            (max: number, response: ModelResponse) => Math.max(max, response.latency_ms),
+            0
+          ),
+          errorMessage: errors.length > 0 ? errors.join(" | ") : undefined,
+        };
+      } catch (error) {
+        return {
+          caseIndex: index,
+          input,
+          output: null,
+          expected: evalCase.expected,
+          score: 0,
+          passed: false,
+          agreement_rate: 0,
+          latencyMs: 0,
+          errorMessage: formatError(error),
+        };
+      }
+    })
+  );
+
+  const totalCases = caseResults.length;
+  const passedCases = caseResults.filter((result) => result.passed).length;
+  const score =
+    totalCases === 0
+      ? 0
+      : caseResults.reduce((total, result) => total + result.score, 0) / totalCases;
+  const agreementRate =
+    totalCases === 0
+      ? 0
+      : caseResults.reduce(
+          (total, result) => total + (result.agreement_rate ?? 0),
+          0
+        ) / totalCases;
+
+  return {
+    suiteName: suite.name,
+    strategy: "consensus",
+    score,
+    threshold: suite.threshold,
+    agreement_rate: agreementRate,
+    passed: passedCases === totalCases && totalCases > 0,
+    totalCases,
+    passedCases,
+    durationMs: Date.now() - startedAt,
+    estimatedCostUsd: 0,
+    cases: caseResults,
   };
 }
 
@@ -428,12 +512,14 @@ Upgrade to Indie ($20/mo) for 5 repos at ${BILLING_PRICING_URL}
     const llmJudgeSuites = config.evals.filter((suite) => suite.type === "llm_judge");
     const performanceSuites = config.evals.filter((suite) => suite.type === "performance");
     const toolUseSuites = config.evals.filter((suite) => suite.type === "tool_use");
+    const consensusSuites = config.evals.filter((suite) => suite.type === "consensus");
     const unsupportedSuites = config.evals.filter(
       (suite) =>
         suite.type !== "golden_dataset" &&
         suite.type !== "llm_judge" &&
         suite.type !== "performance" &&
-        suite.type !== "tool_use"
+        suite.type !== "tool_use" &&
+        suite.type !== "consensus"
     );
 
     for (const suite of goldenSuites) {
@@ -517,6 +603,13 @@ Upgrade to Indie ($20/mo) for 5 repos at ${BILLING_PRICING_URL}
         cases
       );
 
+      suiteResults.push(suiteResult);
+    }
+
+    for (const suite of consensusSuites) {
+      const datasetPath = normalizeRepoPath(suite.dataset);
+      const cases = await fetchDatasetFile(octokit, owner, repo, branch, datasetPath);
+      const suiteResult = await runConsensusSuite(suite, cases);
       suiteResults.push(suiteResult);
     }
 

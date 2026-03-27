@@ -1,6 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { AgentCallResult, JsonObject, JsonValue, ToolCall } from "@agentura/types";
+import type {
+  AgentCallResult,
+  ConsensusResult,
+  JsonObject,
+  JsonValue,
+  ToolCall,
+} from "@agentura/types";
+
+import type { TraceFlag } from "./trace-flags";
 
 export interface AgentTrace {
   trace_id: string;
@@ -17,6 +25,7 @@ export interface AgentTrace {
   token_usage: { input: number; output: number };
   duration_ms: number;
   flags: TraceFlag[];
+  consensus_result?: ConsensusResult | null;
 }
 
 export interface ToolCallRecord {
@@ -26,11 +35,6 @@ export interface ToolCallRecord {
   timestamp: string;
   data_accessed: string[];
 }
-
-export type TraceFlag =
-  | { type: "consensus_disagreement"; agreement_rate: number }
-  | { type: "no_tool_call_expected" }
-  | { type: "latency_exceeded"; threshold_ms: number; actual_ms: number };
 
 export interface TraceSummary {
   trace_id: string;
@@ -64,6 +68,7 @@ export interface BuildAgentTraceOptions {
   durationMs?: number;
   flags?: TraceFlag[];
   redactToolOutputs?: boolean;
+  consensusResult?: ConsensusResult | null;
 }
 
 export const REDACTED_VALUE = "[REDACTED]";
@@ -206,9 +211,12 @@ export function buildAgentTrace(options: BuildAgentTraceOptions): AgentTrace {
       options.durationMs ?? options.agentResult?.latencyMs
     ),
     flags: [...(options.flags ?? [])],
+    consensus_result: options.consensusResult ?? null,
   };
 }
 
 export function traceHasFlags(trace: AgentTrace): boolean {
   return trace.flags.length > 0;
 }
+
+export type { TraceFlag } from "./trace-flags";

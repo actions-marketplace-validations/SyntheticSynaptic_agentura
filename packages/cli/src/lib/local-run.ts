@@ -11,7 +11,10 @@ import yaml from "js-yaml";
 import {
   appendToManifest,
   buildAgentTrace,
+  buildConsensusTraceFlags,
   buildPromptHash,
+  normalizeConsensusModels,
+  runConsensus,
   writeTrace,
   type AgentTrace,
   type TraceFlag,
@@ -32,6 +35,7 @@ import {
 import type { ResolvedLlmJudgeProvider } from "@agentura/eval-runner";
 import type {
   AgentFunction,
+  ConsensusModelConfig,
   EvalCase,
   EvalCaseResult,
   JsonObject,
@@ -290,6 +294,52 @@ const toolUseSuiteSchema = z.object({
   threshold: z.number().min(0).max(1),
 });
 
+const consensusModelEntrySchema = z.union([
+  z.object({
+    provider: z.enum(["anthropic", "openai", "google", "gemini"]),
+    model: z.string().min(1),
+  }),
+  z.string().min(1),
+]);
+
+const consensusSuiteSchema = z.object({
+  name: z.string().min(1),
+  type: z.literal("consensus"),
+  dataset: z.string().min(1),
+  models: z
+    .array(consensusModelEntrySchema)
+    .min(2)
+    .transform((models) =>
+      normalizeConsensusModels(
+        models.map((model) =>
+          typeof model === "string"
+            ? model
+            : `${model.provider}:${model.model}`
+        )
+      )
+    ),
+  threshold: z.number().min(0).max(1),
+});
+
+const consensusConfigSchema = z.object({
+  models: z
+    .array(consensusModelEntrySchema)
+    .min(2)
+    .transform((models) =>
+      normalizeConsensusModels(
+        models.map((model) =>
+          typeof model === "string"
+            ? model
+            : `${model.provider}:${model.model}`
+        )
+      )
+    ),
+  agreement_threshold: z.number().min(0).max(1).default(0.8),
+  on_disagreement: z.enum(["flag", "escalate", "reject"]).default("flag"),
+  scope: z.enum(["all", "high_stakes_only"]).default("high_stakes_only"),
+  high_stakes_tools: z.array(z.string().min(1)).default([]),
+});
+
 const ciSchema = z
   .object({
     block_on_regression: z.boolean().default(false),
@@ -310,9 +360,16 @@ const configSchema = z.object({
   version: z.number().int().positive(),
   agent: agentSchema,
   evals: z.array(
-    z.union([goldenSuiteSchema, llmJudgeSuiteSchema, performanceSuiteSchema, toolUseSuiteSchema])
+    z.union([
+      goldenSuiteSchema,
+      llmJudgeSuiteSchema,
+      performanceSuiteSchema,
+      toolUseSuiteSchema,
+      consensusSuiteSchema,
+    ])
   ),
   ci: ciSchema,
+  consensus: consensusConfigSchema.optional(),
 });
 
 const baselineCaseSnapshotSchema = z.object({
@@ -342,6 +399,7 @@ const baselineSnapshotSchema = z.object({
 
 type ParsedConfig = z.infer<typeof configSchema>;
 type ParsedSuite = ParsedConfig["evals"][number];
+type ParsedConsensusSuite = Extract<ParsedSuite, { type: "consensus" }>;
 type ParsedPerformanceSuite = Extract<ParsedSuite, { type: "performance" }>;
 
 const sdkAgentCache = new Map<string, AgentFunction>();
@@ -1010,6 +1068,10 @@ function mergeTraceFlags(flags: TraceFlag[]): TraceFlag[] {
 function buildEvalFailureFlags(suite: ParsedSuite, caseResult: EvalCaseResult): TraceFlag[] {
   const flags: TraceFlag[] = [];
 
+  if (suite.type === "consensus" && caseResult.consensus_result) {
+    flags.push(...buildConsensusTraceFlags(caseResult.consensus_result, suite.threshold));
+  }
+
   if (
     suite.type === "llm_judge" &&
     typeof caseResult.agreement_rate === "number" &&
@@ -1060,6 +1122,7 @@ function createFallbackFailureTrace(
     },
     flags: buildEvalFailureFlags(suite, caseResult),
     redactToolOutputs: true,
+    consensusResult: caseResult.consensus_result,
   });
 }
 
@@ -1377,6 +1440,88 @@ async function runSuite(
   const datasetPath = suite.dataset;
   const caseCount = cases.length;
 
+  if (suite.type === "consensus") {
+    const startedAt = performance.now();
+    const caseResults = await Promise.all(
+      cases.map(async (testCase, index): Promise<EvalCaseResult> => {
+        const input = getCaseInput(testCase);
+
+        try {
+          const consensusResult = await runConsensus(input, suite.models, {
+            agreementThreshold: suite.threshold,
+          });
+          const responseErrors = consensusResult.responses
+            .map((response) => response.error)
+            .filter((error): error is string => typeof error === "string" && error.length > 0);
+
+          return {
+            caseIndex: index,
+            input,
+            output:
+              consensusResult.winning_response.length > 0
+                ? consensusResult.winning_response
+                : null,
+            expected: testCase.expected,
+            score: consensusResult.agreement_rate,
+            passed: consensusResult.agreement_rate >= suite.threshold,
+            agreement_rate: consensusResult.agreement_rate,
+            consensus_result: consensusResult,
+            latencyMs: consensusResult.responses.reduce(
+              (max, response) => Math.max(max, response.latency_ms),
+              0
+            ),
+            errorMessage: responseErrors.length > 0 ? responseErrors.join(" | ") : undefined,
+          };
+        } catch (error) {
+          return {
+            caseIndex: index,
+            input,
+            output: null,
+            expected: testCase.expected,
+            score: 0,
+            passed: false,
+            agreement_rate: 0,
+            latencyMs: 0,
+            errorMessage: getErrorMessage(error),
+          };
+        }
+      })
+    );
+    const totalCases = caseResults.length;
+    const passedCases = caseResults.filter((result) => result.passed).length;
+    const score =
+      totalCases === 0
+        ? 0
+        : caseResults.reduce((total, result) => total + result.score, 0) / totalCases;
+    const agreementRate =
+      totalCases === 0
+        ? 0
+        : caseResults.reduce(
+            (total, result) => total + (result.agreement_rate ?? 0),
+            0
+          ) / totalCases;
+
+    return {
+      cases,
+      datasetHash,
+      datasetPath,
+      caseCount,
+      result: {
+        suiteName: suite.name,
+        strategy: "consensus",
+        score,
+        threshold: suite.threshold,
+        agreement_rate: agreementRate,
+        passed: passedCases === totalCases && totalCases > 0,
+        totalCases,
+        passedCases,
+        durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+        estimatedCostUsd: 0,
+        cases: caseResults,
+      },
+    };
+  }
+
   if (suite.type === "golden_dataset") {
     return {
       cases,
@@ -1495,7 +1640,9 @@ function toSummaryRow(
     scoreText: result.score.toFixed(2),
     thresholdText: suite.threshold.toFixed(2),
     agreementText:
-      suite.type === "llm_judge" && (suite.runs ?? 1) > 1 && typeof result.agreement_rate === "number"
+      ((suite.type === "llm_judge" && (suite.runs ?? 1) > 1) ||
+        suite.type === "consensus") &&
+      typeof result.agreement_rate === "number"
         ? result.agreement_rate.toFixed(2)
         : null,
     statusText: formatStatusText(result.passed, false),
@@ -1510,7 +1657,7 @@ function collectLowAgreementWarnings(
   const warnings: string[] = [];
 
   for (const result of results) {
-    if (result.strategy !== "llm_judge" || typeof result.agreement_rate !== "number") {
+    if (typeof result.agreement_rate !== "number") {
       continue;
     }
 
@@ -1518,8 +1665,18 @@ function collectLowAgreementWarnings(
       continue;
     }
 
-    warnings.push(`⚠ ${result.suiteName}: low judge agreement (${result.agreement_rate.toFixed(2)}).`);
-    warnings.push("  Results may be unreliable. Consider revising your rubric.");
+    if (result.strategy === "llm_judge") {
+      warnings.push(`⚠ ${result.suiteName}: low judge agreement (${result.agreement_rate.toFixed(2)}).`);
+      warnings.push("  Results may be unreliable. Consider revising your rubric.");
+      continue;
+    }
+
+    if (result.strategy === "consensus") {
+      warnings.push(
+        `⚠ ${result.suiteName}: low consensus agreement (${result.agreement_rate.toFixed(2)}).`
+      );
+      warnings.push("  Responses diverged across model families. Human review is recommended.");
+    }
   }
 
   return warnings;
@@ -1530,6 +1687,34 @@ function printVerboseCaseResults(
   cases: EvalCase[],
   result: SuiteRunResult
 ): void {
+  if (suite.type === "consensus") {
+    result.cases.forEach((caseResult: EvalCaseResult) => {
+      const testCase = cases[caseResult.caseIndex] ?? {
+        id: undefined,
+        input: caseResult.input,
+      };
+      const caseId = createCaseId(testCase);
+      const icon = caseResult.passed ? chalk.green("✓") : chalk.red("✗");
+
+      console.log(
+        `  ${icon} ${caseId} (agreement: ${(caseResult.agreement_rate ?? 0).toFixed(2)})`
+      );
+
+      caseResult.consensus_result?.responses.forEach((response) => {
+        const label = `${response.provider}:${response.model}`;
+        const value = response.error
+          ? `[ERROR] ${response.error}`
+          : quoteValue(response.response);
+        console.log(`    ${label}: ${value}`);
+      });
+
+      if (caseResult.consensus_result) {
+        console.log(`    winning: ${quoteValue(caseResult.consensus_result.winning_response)}`);
+      }
+    });
+    return;
+  }
+
   if (suite.type === "tool_use") {
     result.cases.forEach((caseResult: EvalCaseResult) => {
       const testCase = cases[caseResult.caseIndex] ?? {

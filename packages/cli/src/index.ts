@@ -5,6 +5,7 @@ dotenv.config();
 
 import chalk from "chalk";
 import { Command } from "commander";
+import { consensusCommand } from "./commands/consensus";
 import { generateCommand } from "./commands/generate";
 import { initCommand } from "./commands/init";
 import { loginCommand } from "./commands/login";
@@ -20,6 +21,7 @@ program
   .description(
     "AI eval CI/CD for your agents\n\n" +
       "Commands:\n" +
+      "  consensus Route one input across heterogeneous models and vote on the safest answer\n" +
       "  generate  Generate eval test cases using AI\n" +
       "  init      Initialize agentura.yaml\n" +
       "  run       Run evals locally\n" +
@@ -27,6 +29,19 @@ program
       "  trace     Capture a production trace for an agent call"
   )
   .version(pkg.version);
+
+program
+  .command("consensus")
+  .description("Run a heterogeneous model consensus check for a single input")
+  .requiredOption("--input <text>", "Input to send to the model set")
+  .requiredOption(
+    "--models <list>",
+    "Comma-separated provider:model list, for example anthropic:claude-sonnet-4-6,openai:gpt-4o"
+  )
+  .option("--threshold <value>", "Agreement threshold between 0 and 1", "0.80")
+  .option("--out <dir>", "Output directory for trace files", ".agentura/traces")
+  .option("--verbose", "Print the final consensus trace JSON to stdout")
+  .action(consensusCommand);
 
 program
   .command("generate")
