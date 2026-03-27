@@ -7,10 +7,10 @@
 
 ## Current Status
 
-**Active milestone:** 18 — CLI: agentura generate
-**Progress:** 17 / 19 milestones complete
-**Last updated:** Added repo CI, reusable GitHub Actions support, contributor docs, issue templates, and a release-oriented README refresh
-**Next action:** Run manual Milestone 18 E2E checks (`generate` basic flow, flag-driven flow, and missing-config failure path)
+**Active milestone:** I — Frozen Reference and Drift Detection
+**Progress:** Added frozen reference snapshots, drift diff/history commands, and manifest drift summaries
+**Last updated:** Added local reference snapshot storage, frozen-input drift comparison, `--drift-check` integration, and drift docs
+**Next action:** Surface frozen-reference drift trends in broader reporting and dashboard flows
 
 ---
 
@@ -2455,3 +2455,39 @@ Milestone H follow-up — feed trace summaries into broader audit/reporting surf
 
 **Next session:**
 Wire the top-level runtime `consensus` block into any future live agent invocation path that needs automatic high-stakes tool escalation beyond the dedicated CLI and eval flows.
+
+## Session — 2026-03-27 09:51 UTC
+
+**Milestone:** I — Frozen Reference and Drift Detection
+**Status:** COMPLETE
+
+**Files created:**
+- `packages/cli/src/lib/agent-loader.ts` — extracted shared SDK agent module loading so reference snapshots and local runs resolve agents consistently
+- `packages/cli/src/lib/reference.ts` — added frozen reference snapshot storage, frozen-input drift comparison, history persistence, and manifest drift writing
+- `packages/cli/src/commands/reference.ts` — added `agentura reference snapshot`, `agentura reference diff`, and `agentura reference history`
+- `docs/drift.md` — documented reference snapshots, drift metrics, thresholds, history, and the local `--drift-check` workflow
+
+**Files modified:**
+- `packages/types/src/index.ts` — added drift config and threshold types and aligned `AgentConfig` with optional HTTP headers used by the local runner
+- `packages/cli/src/index.ts` — registered the new `reference` command group and the `run --drift-check` flag
+- `packages/cli/src/commands/run.ts` — forwarded the drift-check option into the local runner
+- `packages/cli/src/lib/local-run.ts` — parsed top-level `drift` config, ran frozen-reference checks after local evals, and wrote drift summaries into `.agentura/manifest.json`
+- `packages/cli/src/commands/run.test.ts` — added coverage for snapshot immutability, frozen-input diffing, drift history, and `run --local --drift-check`
+- `docs/quickstart.md` — added the frozen reference and drift-check workflow to the onboarding guide
+- `docs/Documentation.md` — updated current status and appended this session summary
+
+**Decisions made:**
+- Drift comparisons replay the frozen snapshot inputs saved in `.agentura/reference/<label>/outputs.jsonl` instead of reloading the current dataset file, so output drift stays measurable even if the on-disk dataset changes later.
+- Reference snapshots stay local and immutable by default; replacing one requires an explicit `--force`.
+- Standalone `agentura reference diff` reuses configured drift thresholds from `agentura.yaml` when available so ad hoc comparisons and `run --local --drift-check` use the same gates.
+
+**Validation results:**
+- `pnpm type-check`: PASS
+- `pnpm test`: PASS
+- `git diff --check`: PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Extend drift summaries into dashboard and reporting surfaces so frozen-reference trend lines are visible without reading local files directly.

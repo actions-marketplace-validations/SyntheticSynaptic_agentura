@@ -9,6 +9,7 @@ interface RunCommandOptions {
   allowFallback?: boolean;
   resetBaseline?: boolean;
   locked?: boolean;
+  driftCheck?: boolean;
 }
 
 export async function runCommand(options: RunCommandOptions = {}): Promise<void> {

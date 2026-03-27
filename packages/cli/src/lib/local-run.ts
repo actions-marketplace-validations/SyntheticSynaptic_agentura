@@ -4,7 +4,6 @@ import { promises as fs } from "node:fs";
 import { createRequire } from "node:module";
 import { performance } from "node:perf_hooks";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import chalk from "chalk";
 import yaml from "js-yaml";
@@ -36,6 +35,7 @@ import type { ResolvedLlmJudgeProvider } from "@agentura/eval-runner";
 import type {
   AgentFunction,
   ConsensusModelConfig,
+  DriftThresholdBreach,
   EvalCase,
   EvalCaseResult,
   JsonObject,
@@ -45,7 +45,13 @@ import type {
 } from "@agentura/types";
 import { z } from "zod";
 
+import { loadSdkAgentFunction } from "./agent-loader";
 import { loadDataset } from "./load-dataset";
+import {
+  appendDriftHistory,
+  DEFAULT_DRIFT_THRESHOLDS,
+  diffAgainstReference,
+} from "./reference";
 import { loadRubric } from "./load-rubric";
 
 export interface LocalRunCommandOptions {
@@ -54,6 +60,7 @@ export interface LocalRunCommandOptions {
   allowFallback?: boolean;
   resetBaseline?: boolean;
   locked?: boolean;
+  driftCheck?: boolean;
 }
 
 interface LocalSuiteSummaryRow {
@@ -169,6 +176,14 @@ interface EvalRunManifest {
   commit: string | null;
   cli_version: string;
   suites: EvalRunManifestSuite[];
+  drift?: {
+    reference_label: string;
+    semantic_drift: number;
+    tool_call_drift: number;
+    latency_drift_ms: number;
+    divergent_cases: string[];
+    threshold_breaches: DriftThresholdBreach[];
+  };
 }
 
 interface DatasetChange {
@@ -340,6 +355,21 @@ const consensusConfigSchema = z.object({
   high_stakes_tools: z.array(z.string().min(1)).default([]),
 });
 
+const driftThresholdsSchema = z.object({
+  semantic_drift: z.number().min(0).max(1).default(DEFAULT_DRIFT_THRESHOLDS.semantic_drift),
+  tool_call_drift: z.number().min(0).max(1).default(DEFAULT_DRIFT_THRESHOLDS.tool_call_drift),
+  latency_drift_ms: z
+    .number()
+    .int()
+    .nonnegative()
+    .default(DEFAULT_DRIFT_THRESHOLDS.latency_drift_ms),
+});
+
+const driftConfigSchema = z.object({
+  reference: z.string().min(1),
+  thresholds: driftThresholdsSchema.default(DEFAULT_DRIFT_THRESHOLDS),
+});
+
 const ciSchema = z
   .object({
     block_on_regression: z.boolean().default(false),
@@ -370,6 +400,7 @@ const configSchema = z.object({
   ),
   ci: ciSchema,
   consensus: consensusConfigSchema.optional(),
+  drift: driftConfigSchema.optional(),
 });
 
 const baselineCaseSnapshotSchema = z.object({
@@ -399,28 +430,7 @@ const baselineSnapshotSchema = z.object({
 
 type ParsedConfig = z.infer<typeof configSchema>;
 type ParsedSuite = ParsedConfig["evals"][number];
-type ParsedConsensusSuite = Extract<ParsedSuite, { type: "consensus" }>;
 type ParsedPerformanceSuite = Extract<ParsedSuite, { type: "performance" }>;
-
-const sdkAgentCache = new Map<string, AgentFunction>();
-
-function pickSdkExport(moduleNamespace: unknown, modulePath: string): AgentFunction {
-  if (typeof moduleNamespace === "function") {
-    return moduleNamespace as AgentFunction;
-  }
-
-  if (moduleNamespace && typeof moduleNamespace === "object") {
-    const record = moduleNamespace as Record<string, unknown>;
-    const candidate = record.default ?? record.agent ?? record.run;
-    if (typeof candidate === "function") {
-      return candidate as AgentFunction;
-    }
-  }
-
-  throw new Error(
-    `SDK agent module ${modulePath} must export a function as default, agent, or run`
-  );
-}
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -1255,25 +1265,6 @@ async function loadAgenturaConfig(cwd: string): Promise<ParsedConfig> {
   return parsed.data;
 }
 
-async function loadSdkAgentFunction(modulePath: string, cwd: string): Promise<AgentFunction> {
-  const absolutePath = path.resolve(cwd, modulePath);
-  const cached = sdkAgentCache.get(absolutePath);
-  if (cached) {
-    return cached;
-  }
-
-  let moduleNamespace: unknown;
-  try {
-    moduleNamespace = await import(pathToFileURL(absolutePath).href);
-  } catch (error) {
-    throw new Error(`Unable to import SDK agent module ${modulePath}: ${getErrorMessage(error)}`);
-  }
-
-  const agentFn = pickSdkExport(moduleNamespace, modulePath);
-  sdkAgentCache.set(absolutePath, agentFn);
-  return agentFn;
-}
-
 function createLocalAgentFunction(
   agentConfig: ParsedConfig["agent"],
   cwd: string,
@@ -1787,6 +1778,63 @@ function printVerboseCaseResults(
   });
 }
 
+function printDriftCheckSummary(
+  result: Awaited<ReturnType<typeof diffAgainstReference>>,
+  thresholds: NonNullable<ParsedConfig["drift"]>["thresholds"]
+): void {
+  console.log(
+    `Reference: ${result.reference_label} (${result.reference_timestamp.slice(0, 10)})`
+  );
+  console.log(
+    `Semantic drift:    ${result.semantic_drift.toFixed(2)} ${
+      result.threshold_breaches.includes("semantic_drift") ? chalk.yellow("⚠") : chalk.green("✓")
+    } (threshold ${thresholds.semantic_drift.toFixed(2)})`
+  );
+  console.log(
+    `Tool call drift:   ${result.tool_call_drift.toFixed(2)} ${
+      result.threshold_breaches.includes("tool_call_drift") ? chalk.yellow("⚠") : chalk.green("✓")
+    } (threshold ${thresholds.tool_call_drift.toFixed(2)})`
+  );
+
+  const latencyValue = `${result.latency_drift_ms >= 0 ? "+" : ""}${String(result.latency_drift_ms)}ms`;
+  if (result.threshold_breaches.includes("latency_drift")) {
+    console.log(
+      `Latency drift:    ${latencyValue} ${chalk.yellow("⚠")} (above ${String(
+        thresholds.latency_drift_ms
+      )}ms threshold)`
+    );
+  } else {
+    console.log(
+      `Latency drift:    ${latencyValue} ${chalk.green("✓")} (threshold ${String(
+        thresholds.latency_drift_ms
+      )}ms)`
+    );
+  }
+
+  console.log("");
+
+  if (result.divergent_cases.length === 0) {
+    console.log("No cases diverged meaningfully.");
+    console.log("");
+    return;
+  }
+
+  console.log(
+    `${String(result.divergent_cases.length)} ${pluralize(
+      result.divergent_cases.length,
+      "case"
+    )} diverged meaningfully:`
+  );
+  result.divergent_cases.slice(0, 10).forEach((entry) => {
+    console.log(
+      `  ${entry.case_id}: similarity ${entry.similarity.toFixed(2)} (was ${quoteValue(
+        entry.reference_output
+      )}, now ${quoteValue(entry.current_output)})`
+    );
+  });
+  console.log("");
+}
+
 export async function runLocalCommand(options: LocalRunCommandOptions = {}): Promise<number> {
   const cwd = process.cwd();
   const startedAt = performance.now();
@@ -1816,6 +1864,7 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
   const completedRows: LocalSuiteSummaryRow[] = [];
   const skippedReasons: string[] = [];
   const completedSuites: CompletedSuiteRun[] = [];
+  let driftResult: Awaited<ReturnType<typeof diffAgainstReference>> | null = null;
 
   console.log(chalk.gray("Running evals locally..."));
   if (judge) {
@@ -1924,6 +1973,37 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
     printDiffReport(diffReport);
   }
 
+  if (options.driftCheck) {
+    if (!config.drift) {
+      throw new Error(
+        "--drift-check requires drift.reference and drift.thresholds in agentura.yaml"
+      );
+    }
+
+    console.log(
+      chalk.gray(`Running drift check against reference: ${config.drift.reference}`)
+    );
+    driftResult = await diffAgainstReference({
+      cwd,
+      label: config.drift.reference,
+      thresholds: config.drift.thresholds,
+      agentFn,
+    });
+    await appendDriftHistory(cwd, driftResult);
+    printDriftCheckSummary(driftResult, config.drift.thresholds);
+  }
+
+  if (driftResult) {
+    manifest.drift = {
+      reference_label: driftResult.reference_label,
+      semantic_drift: driftResult.semantic_drift,
+      tool_call_drift: driftResult.tool_call_drift,
+      latency_drift_ms: driftResult.latency_drift_ms,
+      divergent_cases: driftResult.divergent_cases.map((entry) => entry.case_id),
+      threshold_breaches: [...driftResult.threshold_breaches],
+    };
+  }
+
   await writeEvalRunManifest(cwd, manifest);
   const failedCaseTraceCount = await writeFailedCaseTraces(
     cwd,
@@ -1935,11 +2015,23 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
 
   const failedSuites = completedRows.filter((row) => !row.passed && !row.skipped).length;
   const lockedDatasetChanges = options.locked ? datasetChanges.length : 0;
-  const exitCode = failedSuites > 0 || lockedDatasetChanges > 0 ? 1 : 0;
+  const driftBreaches = driftResult?.threshold_breaches.length ?? 0;
+  const exitCode =
+    failedSuites > 0 || lockedDatasetChanges > 0 || driftBreaches > 0 ? 1 : 0;
   if (lockedDatasetChanges > 0) {
     console.log(
       chalk.red(
         `Locked mode: ${String(lockedDatasetChanges)} ${pluralize(lockedDatasetChanges, "dataset")} changed since baseline.`
+      )
+    );
+  }
+  if (driftBreaches > 0) {
+    console.log(
+      chalk.red(
+        `Drift check breached ${String(driftBreaches)} ${pluralize(
+          driftBreaches,
+          "threshold"
+        )}.`
       )
     );
   }

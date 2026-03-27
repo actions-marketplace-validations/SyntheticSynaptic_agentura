@@ -77,8 +77,32 @@ Within about 30 to 90 seconds you should see:
 
 From that point on, every qualifying PR gets the same eval gate automatically.
 
+## Optional — Freeze a reference before risky agent changes
+
+If you are about to change a prompt, upgrade a model, or adjust tool routing, capture a frozen reference first:
+
+```bash
+agentura reference snapshot \
+  --agent ./agent.ts \
+  --dataset ./evals/accuracy.jsonl \
+  --label v1.0-pre-prompt-change
+```
+
+Then compare the current behavior against that reference:
+
+```bash
+agentura reference diff --against v1.0-pre-prompt-change
+```
+
+To run drift detection as part of a normal local eval pass, add a `drift` block to `agentura.yaml` and run:
+
+```bash
+agentura run --local --drift-check
+```
+
 ## Next steps
 
 - [Configure eval strategies](./strategies.md)
+- [Freeze references and measure drift](./drift.md)
 - [Full agentura.yaml reference](./agentura-yaml.md)
 - [Self-hosting and local inference](./self-hosting.md)

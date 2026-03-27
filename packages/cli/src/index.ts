@@ -9,6 +9,11 @@ import { consensusCommand } from "./commands/consensus";
 import { generateCommand } from "./commands/generate";
 import { initCommand } from "./commands/init";
 import { loginCommand } from "./commands/login";
+import {
+  referenceDiffCommand,
+  referenceHistoryCommand,
+  referenceSnapshotCommand,
+} from "./commands/reference";
 import { runCommand } from "./commands/run";
 import { traceCommand, traceDiffCommand } from "./commands/trace";
 
@@ -26,6 +31,7 @@ program
       "  init      Initialize agentura.yaml\n" +
       "  run       Run evals locally\n" +
       "  login     Authenticate with Agentura\n" +
+      "  reference Freeze an agent version and measure behavioral drift\n" +
       "  trace     Capture a production trace for an agent call"
   )
   .version(pkg.version);
@@ -77,8 +83,33 @@ program
   )
   .option("--reset-baseline", "Overwrite the saved local baseline with this run")
   .option("--locked", "Fail if any dataset changed since the saved baseline")
+  .option("--drift-check", "Run a frozen-reference drift check after local evals")
   .option("--verbose", "Show individual case results")
   .action(runCommand);
+
+const referenceProgram = program
+  .command("reference")
+  .description("Manage frozen reference snapshots and behavioral drift checks");
+
+referenceProgram
+  .command("snapshot")
+  .description("Freeze current SDK agent outputs for a dataset under a named label")
+  .requiredOption("--agent <path>", "Path to the SDK agent module to snapshot")
+  .requiredOption("--dataset <path>", "Dataset to run when capturing the snapshot")
+  .requiredOption("--label <name>", "Reference label, for example v1.0-pre-prompt-change")
+  .option("--force", "Overwrite an existing reference snapshot with the same label")
+  .action(referenceSnapshotCommand);
+
+referenceProgram
+  .command("diff")
+  .description("Compare the current agent behavior against a frozen reference snapshot")
+  .requiredOption("--against <label>", "Reference label to compare against")
+  .action(referenceDiffCommand);
+
+referenceProgram
+  .command("history")
+  .description("Show prior drift comparisons recorded on this machine")
+  .action(referenceHistoryCommand);
 
 const traceProgram = program
   .command("trace")

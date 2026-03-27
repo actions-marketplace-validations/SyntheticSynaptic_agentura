@@ -87,6 +87,37 @@ function fingerprintDataset(raw: string): string {
   return `sha256:${createHash("sha256").update(raw).digest("hex")}`;
 }
 
+function buildReferenceAgentModule(
+  cases: Record<
+    string,
+    {
+      output: string;
+      latencyMs: number;
+      toolCalls?: Array<{ name: string; args?: Record<string, string | number> }>;
+    }
+  >
+): string {
+  return `
+const cases = ${JSON.stringify(cases, null, 2)};
+const promptHash = ${JSON.stringify("p".repeat(64))};
+
+export default async function agent(input) {
+  const entry = cases[input];
+  if (!entry) {
+    throw new Error(\`Unexpected input: \${input}\`);
+  }
+
+  return {
+    output: entry.output,
+    latencyMs: entry.latencyMs,
+    tool_calls: entry.toolCalls ?? [],
+    model: "test-model",
+    promptHash
+  };
+}
+`.trimStart();
+}
+
 after(async () => {
   await Promise.all(
     TEMP_DIRS.map(async (directory) => {
@@ -1390,6 +1421,377 @@ ci:
   assert.equal(trace.model, "demo-model");
   assert.equal(trace.model_version, "demo-model-v1");
   assert.deepEqual(trace.flags, [{ type: "no_tool_call_expected" }]);
+});
+
+test("reference snapshot stores frozen outputs and requires --force to overwrite", async () => {
+  const directory = await createFixtureDir("agentura-cli-reference-snapshot-");
+  const dataset = `
+{"id":"case_4","input":"Patient A next step"}
+{"id":"case_7","input":"Patient B next step"}
+{"id":"case_11","input":"Patient C next step"}
+`.trimStart();
+
+  await mkdir(path.join(directory, "evals"), { recursive: true });
+  await writeFile(
+    path.join(directory, "agent.mjs"),
+    buildReferenceAgentModule({
+      "Patient A next step": {
+        output: "Refer ACHD specialist now",
+        latencyMs: 35,
+        toolCalls: [{ name: "route_specialist", args: { specialty: "achd" } }],
+      },
+      "Patient B next step": {
+        output: "Schedule routine follow-up",
+        latencyMs: 30,
+        toolCalls: [{ name: "retrieve_patient_record", args: { patient_id: "b" } }],
+      },
+      "Patient C next step": {
+        output: "Continue current plan",
+        latencyMs: 32,
+        toolCalls: [{ name: "retrieve_patient_record", args: { patient_id: "c" } }],
+      },
+    }),
+    "utf-8"
+  );
+  await writeFile(path.join(directory, "evals", "accuracy.jsonl"), dataset, "utf-8");
+
+  const firstRun = await runCli(directory, [
+    "reference",
+    "snapshot",
+    "--agent",
+    "./agent.mjs",
+    "--dataset",
+    "./evals/accuracy.jsonl",
+    "--label",
+    "v1.0-pre-prompt-change",
+  ]);
+  const firstOutput = stripAnsi(firstRun.output);
+
+  assert.equal(firstRun.code, 0);
+  assert.match(
+    firstOutput,
+    /Reference snapshot saved to \.agentura\/reference\/v1\.0-pre-prompt-change\//
+  );
+
+  const metadata = await readJson<{
+    label: string;
+    dataset_hash: string;
+    case_count: number;
+    model: string | null;
+    prompt_hash: string | null;
+    agent_module: string | null;
+  }>(path.join(directory, ".agentura", "reference", "v1.0-pre-prompt-change", "metadata.json"));
+  const outputsRaw = await readFile(
+    path.join(directory, ".agentura", "reference", "v1.0-pre-prompt-change", "outputs.jsonl"),
+    "utf-8"
+  );
+  const outputs = outputsRaw
+    .trim()
+    .split(/\r?\n/u)
+    .map((line) => JSON.parse(line) as { id: string; output: string; latency_ms: number });
+
+  assert.equal(metadata.label, "v1.0-pre-prompt-change");
+  assert.equal(metadata.dataset_hash, fingerprintDataset(dataset));
+  assert.equal(metadata.case_count, 3);
+  assert.equal(metadata.model, "test-model");
+  assert.equal(metadata.prompt_hash, "p".repeat(64));
+  assert.equal(metadata.agent_module, "./agent.mjs");
+  assert.deepEqual(
+    outputs.map((entry) => ({
+      id: entry.id,
+      output: entry.output,
+      latency_ms: entry.latency_ms,
+    })),
+    [
+      { id: "case_4", output: "Refer ACHD specialist now", latency_ms: 35 },
+      { id: "case_7", output: "Schedule routine follow-up", latency_ms: 30 },
+      { id: "case_11", output: "Continue current plan", latency_ms: 32 },
+    ]
+  );
+
+  const secondRun = await runCli(directory, [
+    "reference",
+    "snapshot",
+    "--agent",
+    "./agent.mjs",
+    "--dataset",
+    "./evals/accuracy.jsonl",
+    "--label",
+    "v1.0-pre-prompt-change",
+  ]);
+  const secondOutput = stripAnsi(secondRun.output);
+
+  assert.equal(secondRun.code, 1);
+  assert.match(
+    secondOutput,
+    /Reference snapshot "v1\.0-pre-prompt-change" already exists\. Use --force to overwrite it\./
+  );
+});
+
+test("reference diff compares against frozen reference inputs, writes manifest drift, and records history", async () => {
+  const directory = await createFixtureDir("agentura-cli-reference-diff-");
+  const snapshotDataset = `
+{"id":"case_4","input":"Patient A next step"}
+{"id":"case_7","input":"Patient B next step"}
+{"id":"case_11","input":"Patient C next step"}
+`.trimStart();
+
+  await mkdir(path.join(directory, "evals"), { recursive: true });
+  await writeFile(
+    path.join(directory, "agent.mjs"),
+    buildReferenceAgentModule({
+      "Patient A next step": {
+        output: "Refer ACHD specialist now",
+        latencyMs: 35,
+        toolCalls: [{ name: "route_specialist", args: { specialty: "achd" } }],
+      },
+      "Patient B next step": {
+        output: "Schedule routine follow-up",
+        latencyMs: 30,
+        toolCalls: [{ name: "retrieve_patient_record", args: { patient_id: "b" } }],
+      },
+      "Patient C next step": {
+        output: "Continue current plan",
+        latencyMs: 32,
+        toolCalls: [{ name: "retrieve_patient_record", args: { patient_id: "c" } }],
+      },
+    }),
+    "utf-8"
+  );
+  await writeFile(path.join(directory, "evals", "accuracy.jsonl"), snapshotDataset, "utf-8");
+
+  const snapshotRun = await runCli(directory, [
+    "reference",
+    "snapshot",
+    "--agent",
+    "./agent.mjs",
+    "--dataset",
+    "./evals/accuracy.jsonl",
+    "--label",
+    "v1.0-pre-prompt-change",
+  ]);
+  assert.equal(snapshotRun.code, 0);
+
+  await writeFile(
+    path.join(directory, "evals", "accuracy.jsonl"),
+    `{"id":"new_case","input":"A completely different dataset input"}\n`,
+    "utf-8"
+  );
+  await writeFile(
+    path.join(directory, "agent.mjs"),
+    buildReferenceAgentModule({
+      "Patient A next step": {
+        output: "Watchful wait for 6 months",
+        latencyMs: 310,
+        toolCalls: [{ name: "watchful_wait", args: { months: 6 } }],
+      },
+      "Patient B next step": {
+        output: "Schedule routine follow-up",
+        latencyMs: 285,
+        toolCalls: [{ name: "retrieve_patient_record", args: { patient_id: "b" } }],
+      },
+      "Patient C next step": {
+        output: "Continue current plan",
+        latencyMs: 290,
+        toolCalls: [{ name: "retrieve_patient_record", args: { patient_id: "c" } }],
+      },
+    }),
+    "utf-8"
+  );
+
+  const diffRun = await runCli(
+    directory,
+    ["reference", "diff", "--against", "v1.0-pre-prompt-change"],
+    {
+      OPENAI_API_KEY: null,
+      ANTHROPIC_API_KEY: null,
+      GEMINI_API_KEY: null,
+      GROQ_API_KEY: null,
+      OLLAMA_BASE_URL: "http://127.0.0.1:1",
+    }
+  );
+  const diffOutput = stripAnsi(diffRun.output);
+
+  assert.equal(diffRun.code, 1);
+  assert.match(diffOutput, /Reference: v1\.0-pre-prompt-change/);
+  assert.match(diffOutput, /Semantic drift:\s+0\.67/);
+  assert.match(diffOutput, /Tool call drift:\s+0\.50/);
+  assert.match(diffOutput, /Latency drift:\s+\+275ms ⚠ \(above 200ms threshold\)/);
+  assert.match(diffOutput, /1 case diverged meaningfully:/);
+  assert.match(diffOutput, /case_4: similarity 0\.00/);
+
+  const manifest = await readJson<{
+    drift: {
+      reference_label: string;
+      semantic_drift: number;
+      tool_call_drift: number;
+      latency_drift_ms: number;
+      divergent_cases: string[];
+      threshold_breaches: string[];
+    };
+  }>(path.join(directory, ".agentura", "manifest.json"));
+  const history = await readJson<{
+    comparisons: Array<{
+      reference_label: string;
+      semantic_drift: number;
+      tool_call_drift: number;
+      latency_drift_ms: number;
+      divergent_cases: Array<{ case_id: string }>;
+      threshold_breaches: string[];
+    }>;
+  }>(path.join(directory, ".agentura", "reference", "history.json"));
+
+  assert.equal(manifest.drift.reference_label, "v1.0-pre-prompt-change");
+  assert.equal(manifest.drift.semantic_drift, 2 / 3);
+  assert.equal(manifest.drift.tool_call_drift, 0.5);
+  assert.equal(manifest.drift.latency_drift_ms, 275);
+  assert.deepEqual(manifest.drift.divergent_cases, ["case_4"]);
+  assert.deepEqual(manifest.drift.threshold_breaches, [
+    "semantic_drift",
+    "tool_call_drift",
+    "latency_drift",
+  ]);
+  assert.equal(history.comparisons.length, 1);
+  assert.equal(history.comparisons[0]?.reference_label, "v1.0-pre-prompt-change");
+  assert.deepEqual(
+    history.comparisons[0]?.divergent_cases.map((entry) => entry.case_id),
+    ["case_4"]
+  );
+
+  const historyRun = await runCli(directory, ["reference", "history"]);
+  const historyOutput = stripAnsi(historyRun.output);
+
+  assert.equal(historyRun.code, 0);
+  assert.match(historyOutput, /Date\s+Reference\s+Semantic\s+Tool\s+Latency/);
+  assert.match(historyOutput, /v1\.0-pre-prompt-change/);
+  assert.match(historyOutput, /0\.67\s+⚠/);
+  assert.match(historyOutput, /0\.50\s+⚠/);
+  assert.match(historyOutput, /\+275ms\s+⚠/);
+});
+
+test("run --local --drift-check fails when frozen-reference thresholds are breached and writes drift to the manifest", async () => {
+  const directory = await createFixtureDir("agentura-cli-run-drift-check-");
+  const dataset = `
+{"id":"case_4","input":"Patient A next step","expected":"Order a repeat echocardiogram in 6 months"}
+{"id":"case_7","input":"Patient B next step","expected":"Schedule routine follow-up"}
+`.trimStart();
+
+  await mkdir(path.join(directory, "evals"), { recursive: true });
+  await writeFile(
+    path.join(directory, "agent.mjs"),
+    buildReferenceAgentModule({
+      "Patient A next step": {
+        output: "Order a repeat echocardiogram in 6 months",
+        latencyMs: 40,
+        toolCalls: [{ name: "retrieve_patient_record", args: { patient_id: "a" } }],
+      },
+      "Patient B next step": {
+        output: "Schedule routine follow-up",
+        latencyMs: 45,
+        toolCalls: [{ name: "retrieve_patient_record", args: { patient_id: "b" } }],
+      },
+    }),
+    "utf-8"
+  );
+  await writeFile(path.join(directory, "evals", "accuracy.jsonl"), dataset, "utf-8");
+
+  const snapshotRun = await runCli(directory, [
+    "reference",
+    "snapshot",
+    "--agent",
+    "./agent.mjs",
+    "--dataset",
+    "./evals/accuracy.jsonl",
+    "--label",
+    "v1.0-pre-prompt-change",
+  ]);
+  assert.equal(snapshotRun.code, 0);
+
+  await writeFile(
+    path.join(directory, "agent.mjs"),
+    buildReferenceAgentModule({
+      "Patient A next step": {
+        output: "Order a repeat echocardiogram in 6 months",
+        latencyMs: 275,
+        toolCalls: [{ name: "generate_recommendation", args: { cadence: "6_months" } }],
+      },
+      "Patient B next step": {
+        output: "Schedule routine follow-up",
+        latencyMs: 290,
+        toolCalls: [{ name: "generate_recommendation", args: { cadence: "routine" } }],
+      },
+    }),
+    "utf-8"
+  );
+  await writeFile(
+    path.join(directory, "agentura.yaml"),
+    `
+version: 1
+agent:
+  type: sdk
+  module: ./agent.mjs
+  timeout_ms: 30000
+
+evals:
+  - name: accuracy
+    type: golden_dataset
+    dataset: ./evals/accuracy.jsonl
+    scorer: exact_match
+    threshold: 0.85
+
+ci:
+  block_on_regression: true
+  regression_threshold: 0.05
+  compare_to: main
+  post_comment: true
+  fail_on_new_suite: false
+
+drift:
+  reference: v1.0-pre-prompt-change
+  thresholds:
+    semantic_drift: 0.85
+    tool_call_drift: 0.95
+    latency_drift_ms: 100
+`.trimStart(),
+    "utf-8"
+  );
+
+  const runResult = await runCli(directory, ["run", "--local", "--drift-check"], {
+    OPENAI_API_KEY: null,
+    ANTHROPIC_API_KEY: null,
+    GEMINI_API_KEY: null,
+    GROQ_API_KEY: null,
+    OLLAMA_BASE_URL: "http://127.0.0.1:1",
+  });
+  const output = stripAnsi(runResult.output);
+
+  assert.equal(runResult.code, 1);
+  assert.match(output, /Running drift check against reference: v1\.0-pre-prompt-change/);
+  assert.match(output, /Reference: v1\.0-pre-prompt-change/);
+  assert.match(output, /Semantic drift:\s+1\.00 ✓ \(threshold 0\.85\)/);
+  assert.match(output, /Tool call drift:\s+0\.00 ⚠ \(threshold 0\.95\)/);
+  assert.match(output, /Latency drift:\s+\+245ms ⚠ \(above 100ms threshold\)/);
+  assert.match(output, /Drift check breached 2 thresholds\./);
+
+  const manifest = await readJson<{
+    drift: {
+      reference_label: string;
+      semantic_drift: number;
+      tool_call_drift: number;
+      latency_drift_ms: number;
+      divergent_cases: string[];
+      threshold_breaches: string[];
+    };
+  }>(path.join(directory, ".agentura", "manifest.json"));
+
+  assert.deepEqual(manifest.drift, {
+    reference_label: "v1.0-pre-prompt-change",
+    semantic_drift: 1,
+    tool_call_drift: 0,
+    latency_drift_ms: 245,
+    divergent_cases: [],
+    threshold_breaches: ["tool_call_drift", "latency_drift"],
+  });
 });
 
 test("consensus command parser normalizes provider aliases and validates threshold", () => {

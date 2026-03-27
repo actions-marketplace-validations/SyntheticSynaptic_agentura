@@ -5,6 +5,22 @@ export interface JsonObject {
   [key: string]: JsonValue;
 }
 
+export type DriftThresholdBreach =
+  | "semantic_drift"
+  | "tool_call_drift"
+  | "latency_drift";
+
+export interface DriftThresholdConfig {
+  semantic_drift: number;
+  tool_call_drift: number;
+  latency_drift_ms: number;
+}
+
+export interface DriftConfig {
+  reference: string;
+  thresholds: DriftThresholdConfig;
+}
+
 export type ConsensusProvider = "anthropic" | "openai" | "google";
 
 export interface ConsensusModelConfig {
@@ -78,6 +94,7 @@ export interface AgenturaConfig {
   evals: EvalSuiteConfig[];
   ci: CIConfig;
   consensus?: ConsensusConfig;
+  drift?: DriftConfig;
 }
 
 export interface AgentConfig {
@@ -86,6 +103,7 @@ export interface AgentConfig {
   command?: string;
   module?: string;
   timeout_ms?: number;
+  headers?: Record<string, string>;
 }
 
 export interface EvalSuiteConfig {
