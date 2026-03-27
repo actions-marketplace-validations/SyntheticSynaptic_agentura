@@ -8,7 +8,9 @@ export interface JsonObject {
 export interface ToolCall {
   name: string;
   args?: JsonObject;
-  result?: string;
+  result?: JsonValue;
+  timestamp?: string;
+  data_accessed?: string[];
 }
 
 export interface ConversationHistoryMessage {
@@ -146,6 +148,7 @@ export interface EvalRunResult {
 
 export interface AgentCallOptions {
   history?: ConversationHistoryMessage[];
+  model?: string;
 }
 
 export type AgentFunction = (
@@ -159,6 +162,12 @@ export interface AgentCallResult {
   inputTokens?: number;
   outputTokens?: number;
   tool_calls?: ToolCall[];
+  model?: string;
+  modelVersion?: string;
+  promptHash?: string;
+  startedAt?: string;
+  completedAt?: string;
+  estimatedCostUsd?: number;
 }
 
 export interface SuiteComparison {

@@ -1,0 +1,17 @@
+{
+  "name": "@agentura/core",
+  "version": "0.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "pnpm --dir ../types run build && tsc -p tsconfig.json",
+    "type-check": "pnpm --dir ../types run build && tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@agentura/types": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

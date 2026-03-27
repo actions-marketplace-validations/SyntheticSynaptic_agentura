@@ -1144,3 +1144,248 @@ ci:
     /llm_judge needs a language model to run\.\nAdd an API key for Anthropic, OpenAI, Gemini, or Groq,\nor start Ollama locally \(ollama\.com\)\.\nThis suite will be skipped\./
   );
 });
+
+test("trace command writes a redacted trace file and appends it to the manifest", async () => {
+  const directory = await createFixtureDir("agentura-cli-trace-command-");
+
+  await writeFile(
+    path.join(directory, "agent.mjs"),
+    `
+import { createHash } from "node:crypto";
+
+export const model = "gpt-4o-mini";
+export const modelVersion = "gpt-4o-mini-2026-03-27";
+export const systemPrompt = "You summarize clinical notes safely and concisely.";
+
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+export default async function agent(input, options = {}) {
+  return {
+    output: \`Summary: \${input}\`,
+    latencyMs: 12,
+    inputTokens: 11,
+    outputTokens: 19,
+    model: options.model ?? model,
+    modelVersion,
+    promptHash: sha256(systemPrompt),
+    tool_calls: [
+      {
+        name: "patient_records.lookup",
+        args: { patient_id: "pt_demo" },
+        result: {
+          name: "Alice Example",
+          dob: "1970-01-01",
+          mrn: "12345",
+          note: "Stable vitals"
+        },
+        timestamp: "2026-03-27T12:00:00.000Z",
+        data_accessed: ["patient:pt_demo"]
+      }
+    ]
+  };
+}
+`.trimStart(),
+    "utf-8"
+  );
+
+  const result = await runCli(directory, [
+    "trace",
+    "--agent",
+    "./agent.mjs",
+    "--input",
+    "summarize patient history",
+    "--out",
+    "./traces",
+    "--redact",
+    "--verbose",
+  ]);
+  const output = stripAnsi(result.output);
+
+  assert.equal(result.code, 0);
+  assert.match(output, /Trace written to traces\//);
+
+  const manifest = await readJson<{
+    run_id: string;
+    traces: Array<{ trace_id: string; path: string; model: string }>;
+  }>(path.join(directory, ".agentura", "manifest.json"));
+  assert.equal(manifest.traces.length, 1);
+  assert.equal(manifest.traces[0]?.model, "gpt-4o-mini");
+
+  const trace = await readJson<{
+    model: string;
+    model_version: string;
+    prompt_hash: string;
+    tool_calls: Array<{ tool_output: { name: string; dob: string; mrn: string; note: string } }>;
+  }>(path.join(directory, manifest.traces[0]?.path ?? ""));
+
+  assert.equal(trace.model, "gpt-4o-mini");
+  assert.equal(trace.model_version, "gpt-4o-mini-2026-03-27");
+  assert.match(trace.prompt_hash, /^[0-9a-f]{64}$/);
+  assert.equal(trace.tool_calls[0]?.tool_output.name, "[REDACTED]");
+  assert.equal(trace.tool_calls[0]?.tool_output.dob, "[REDACTED]");
+  assert.equal(trace.tool_calls[0]?.tool_output.mrn, "[REDACTED]");
+  assert.equal(trace.tool_calls[0]?.tool_output.note, "Stable vitals");
+});
+
+test("trace diff reports semantic similarity, tool diffs, token deltas, and duration deltas", async () => {
+  const directory = await createFixtureDir("agentura-cli-trace-diff-");
+  const traceDir = path.join(directory, ".agentura", "traces", "2026-03-27");
+  await mkdir(traceDir, { recursive: true });
+
+  await writeFile(
+    path.join(traceDir, "trace_a.json"),
+    JSON.stringify(
+      {
+        trace_id: "trace_a",
+        run_id: "run_shared",
+        agent_id: "demo-agent",
+        model: "gpt-4o-mini",
+        model_version: "mini-a",
+        prompt_hash: "a".repeat(64),
+        started_at: "2026-03-27T10:00:00.000Z",
+        completed_at: "2026-03-27T10:00:01.000Z",
+        input: "hello",
+        output: "hello world",
+        tool_calls: [
+          {
+            tool_name: "lookup",
+            tool_input: { id: "1" },
+            tool_output: { ok: true },
+            timestamp: "2026-03-27T10:00:00.500Z",
+            data_accessed: ["patient:1"],
+          },
+        ],
+        token_usage: { input: 10, output: 20 },
+        duration_ms: 1000,
+        flags: [],
+      },
+      null,
+      2
+    ),
+    "utf-8"
+  );
+
+  await writeFile(
+    path.join(traceDir, "trace_b.json"),
+    JSON.stringify(
+      {
+        trace_id: "trace_b",
+        run_id: "run_shared",
+        agent_id: "demo-agent",
+        model: "gpt-4o-mini",
+        model_version: "mini-b",
+        prompt_hash: "b".repeat(64),
+        started_at: "2026-03-27T10:05:00.000Z",
+        completed_at: "2026-03-27T10:05:01.200Z",
+        input: "hello",
+        output: "hello there",
+        tool_calls: [
+          {
+            tool_name: "lookup",
+            tool_input: { id: "2" },
+            tool_output: { ok: true },
+            timestamp: "2026-03-27T10:05:00.500Z",
+            data_accessed: ["patient:2"],
+          },
+          {
+            tool_name: "audit",
+            tool_input: { id: "2" },
+            tool_output: { ok: true },
+            timestamp: "2026-03-27T10:05:00.700Z",
+            data_accessed: ["audit:2"],
+          },
+        ],
+        token_usage: { input: 12, output: 30 },
+        duration_ms: 1200,
+        flags: [],
+      },
+      null,
+      2
+    ),
+    "utf-8"
+  );
+
+  const result = await runCli(directory, ["trace", "diff", "trace_a", "trace_b"], {
+    ANTHROPIC_API_KEY: null,
+    OPENAI_API_KEY: null,
+    GEMINI_API_KEY: null,
+    GROQ_API_KEY: null,
+    OLLAMA_BASE_URL: "http://127.0.0.1:1",
+  });
+  const output = stripAnsi(result.output);
+
+  assert.equal(result.code, 0);
+  assert.match(output, /Output semantic similarity: \d+\.\d{2}/);
+  assert.match(output, /Tool call diff: \+1 \/ -0 \/ ~1/);
+  assert.match(output, /Token usage delta: input \+2, output \+10/);
+  assert.match(output, /Duration delta: \+200ms/);
+  assert.match(output, /Added tools: audit/);
+  assert.match(output, /Changed tools: 1:lookup->lookup/);
+});
+
+test("run --local writes failed-case traces to eval-failures and records manifest summaries", async () => {
+  const directory = await createFixtureDir("agentura-cli-trace-eval-failures-");
+
+  await writeCommonConfigFiles(
+    directory,
+    `
+const chunks = [];
+process.stdin.on("data", (chunk) => chunks.push(chunk.toString()));
+process.stdin.on("end", () => {
+  process.stdout.write(JSON.stringify({
+    output: "I can answer that directly without tools",
+    model: "demo-model",
+    model_version: "demo-model-v1",
+    prompt_hash: "f".repeat(64),
+    tool_calls: []
+  }));
+});
+`.trimStart(),
+    `{"id":"tool_case","input":"What is 15% of 340?","expected_tool":"calculator","expected_args":{"expression":"340*0.15"},"expected_output":"51"}\n`,
+    `
+version: 1
+agent:
+  type: cli
+  command: node ./agent.js
+  timeout_ms: 30000
+evals:
+  - name: tool_use
+    type: tool_use
+    dataset: ./evals/cases.jsonl
+    threshold: 1
+ci:
+  block_on_regression: true
+  regression_threshold: 0.05
+  compare_to: main
+  post_comment: true
+  fail_on_new_suite: false
+`.trimStart()
+  );
+
+  const result = await runCli(directory, ["run", "--local"]);
+  const output = stripAnsi(result.output);
+
+  assert.equal(result.code, 1);
+  assert.match(output, /↳ 1 failed case written to \.agentura\/traces\/eval-failures\//);
+
+  const manifest = await readJson<{
+    traces: Array<{ trace_id: string; path: string; flag_types: string[] }>;
+  }>(path.join(directory, ".agentura", "manifest.json"));
+  assert.equal(manifest.traces.length, 1);
+  assert.match(manifest.traces[0]?.path ?? "", /\.agentura\/traces\/eval-failures\//);
+  assert.deepEqual(manifest.traces[0]?.flag_types, ["no_tool_call_expected"]);
+
+  const trace = await readJson<{
+    flags: Array<{ type: string }>;
+    output: string;
+    model: string;
+    model_version: string;
+  }>(path.join(directory, manifest.traces[0]?.path ?? ""));
+
+  assert.equal(trace.output, "I can answer that directly without tools");
+  assert.equal(trace.model, "demo-model");
+  assert.equal(trace.model_version, "demo-model-v1");
+  assert.deepEqual(trace.flags, [{ type: "no_tool_call_expected" }]);
+});

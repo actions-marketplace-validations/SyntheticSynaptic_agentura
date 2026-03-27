@@ -14,12 +14,13 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts run",
-    "build": "tsup",
-    "type-check": "tsc --noEmit -p tsconfig.json",
+    "build": "pnpm --dir ../core run build && tsup",
+    "type-check": "pnpm --dir ../core run build && tsc --noEmit -p tsconfig.json",
     "test": "pnpm run build && node --test --import tsx src/commands/run.test.ts",
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
+    "@agentura/core": "workspace:*",
     "@anthropic-ai/sdk": "^0.80.0",
     "@google/genai": "^1.46.0",
     "chalk": "^4.1.2",

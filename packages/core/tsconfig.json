@@ -3,21 +3,16 @@
     "target": "ES2022",
     "module": "CommonJS",
     "moduleResolution": "Node",
-    "baseUrl": ".",
-    "lib": ["ES2022"],
-    "types": ["node"],
     "strict": true,
     "declaration": true,
     "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "paths": {
-      "@agentura/core": ["../core/dist"],
-      "@agentura/types": ["../types/dist"],
-      "@agentura/eval-runner": ["../eval-runner/dist"]
-    },
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    "baseUrl": ".",
+    "paths": {
+      "@agentura/types": ["../types/dist"]
+    }
   },
   "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules"]

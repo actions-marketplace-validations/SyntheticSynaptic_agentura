@@ -2363,3 +2363,49 @@ Milestone 19 — continue reconciling the remaining docs surfaces so the markdow
 
 **Next session:**
 Milestone 19 — reconcile the in-app docs pages and any remaining marketing copy so multi-turn eval is highlighted consistently across the site and examples.
+
+## Session — 2026-03-27 08:42 UTC
+
+**Milestone:** H — Production Trace Layer
+**Status:** COMPLETE
+
+**Files created:**
+- `packages/core/package.json` — added the new shared core workspace package manifest for trace utilities
+- `packages/core/tsconfig.json` — added TypeScript config for the shared trace package
+- `packages/core/src/index.ts` — exported trace schema and writer helpers
+- `packages/core/src/trace.ts` — implemented the production trace schema, PII redaction helpers, hashing, summaries, and trace builders
+- `packages/core/src/trace-writer.ts` — implemented trace file writing, manifest appends, trace lookup, and date-based trace reporting
+- `packages/cli/src/commands/trace.ts` — added `agentura trace` capture flow and `agentura trace diff`
+- `examples/openai-agent/trace-example.ts` — added a runnable traced agent example with metadata and tool-call output
+- `docs/trace.md` — documented the trace schema, redaction rules, CLI commands, and eval-failure capture flow
+
+**Files modified:**
+- `packages/types/src/index.ts` — expanded agent/tool-call types to carry structured tool outputs and trace metadata
+- `packages/eval-runner/src/agent-caller/http.ts` — preserved model, prompt hash, timestamps, cost, and structured tool-call metadata from HTTP agents
+- `packages/eval-runner/src/agent-caller/cli-runner.ts` — preserved model metadata and structured tool-call details from CLI agent JSON output
+- `packages/eval-runner/src/agent-caller/sdk.ts` — preserved model metadata and timestamps from SDK agent results
+- `packages/cli/src/index.ts` — registered the new trace capture and trace diff commands
+- `packages/cli/src/lib/local-run.ts` — captured per-call traces during local evals and wrote failed eval cases to `.agentura/traces/eval-failures/`
+- `packages/cli/src/commands/run.test.ts` — added coverage for trace capture, trace diff, and eval-failure trace writing
+- `packages/cli/package.json` — wired the CLI workspace manifest to the new core package
+- `packages/cli/tsconfig.json` — added local path mapping for `@agentura/core`
+- `packages/cli/tsup.config.ts` — bundled `@agentura/core` into the built CLI binary so direct `dist/index.js` execution stays self-contained
+- `packages/core/package.json` — added the workspace dependency on `@agentura/types`
+- `pnpm-lock.yaml` — added workspace importer metadata for `packages/core` and the new CLI/core workspace link
+- `docs/Documentation.md` — appended this session summary
+
+**Decisions made:**
+- Added a dedicated `@agentura/core` workspace package instead of burying trace logic in the CLI so trace schema and writer behavior can be shared cleanly across future runtime, worker, and dashboard surfaces.
+- Kept trace redaction key-based and opt-in via `--redact` so runtime traces remain useful by default while still supporting a safe path for sensitive healthcare-style outputs.
+- Reused captured live agent traces for failed local eval cases whenever possible, only falling back to synthesized traces when no matching runtime trace exists.
+- Declared the new workspace dependencies explicitly and bundled `@agentura/core` into the CLI build so the monorepo graph is truthful and the built CLI still works when executed directly from `dist/`.
+
+**Validation results:**
+- `pnpm run type-check`: PASS
+- `pnpm test`: PASS
+
+**Issues found:**
+- None
+
+**Next session:**
+Milestone H follow-up — feed trace summaries into broader audit/reporting surfaces and start turning eval-failure traces into a first-class candidate-eval workflow.

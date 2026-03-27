@@ -9,6 +9,7 @@ import { generateCommand } from "./commands/generate";
 import { initCommand } from "./commands/init";
 import { loginCommand } from "./commands/login";
 import { runCommand } from "./commands/run";
+import { traceCommand, traceDiffCommand } from "./commands/trace";
 
 const require = createRequire(__filename);
 const pkg = require("../package.json") as { version: string };
@@ -22,7 +23,8 @@ program
       "  generate  Generate eval test cases using AI\n" +
       "  init      Initialize agentura.yaml\n" +
       "  run       Run evals locally\n" +
-      "  login     Authenticate with Agentura"
+      "  login     Authenticate with Agentura\n" +
+      "  trace     Capture a production trace for an agent call"
   )
   .version(pkg.version);
 
@@ -62,6 +64,24 @@ program
   .option("--locked", "Fail if any dataset changed since the saved baseline")
   .option("--verbose", "Show individual case results")
   .action(runCommand);
+
+const traceProgram = program
+  .command("trace")
+  .description("Capture and inspect production traces for agent calls");
+
+traceProgram
+  .option("--agent <path>", "Path to the SDK agent module to invoke")
+  .option("--input <text>", "Input to send to the agent")
+  .option("--model <name>", "Override the model passed to the agent")
+  .option("--out <dir>", "Output directory for trace files", ".agentura/traces")
+  .option("--verbose", "Print the completed trace JSON to stdout")
+  .option("--redact", "Redact PII-like keys in traced tool outputs")
+  .action(traceCommand);
+
+traceProgram
+  .command("diff <traceIdA> <traceIdB>")
+  .description("Compare two traces by semantic similarity, tools, tokens, and latency")
+  .action(traceDiffCommand);
 
 program.parseAsync().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : "Unexpected CLI error";

@@ -90,6 +90,7 @@ export function callCliAgent(params: CliAgentCallInput): Promise<AgentCallerResu
       if (parsedPayload && typeof parsedPayload === "object" && !Array.isArray(parsedPayload)) {
         const output = getOutputValue(parsedPayload);
         const toolCalls = getToolCallsValue(parsedPayload);
+        const parsedRecord = parsedPayload as Record<string, unknown>;
 
         if (output !== null || toolCalls !== undefined) {
           resolve({
@@ -98,6 +99,29 @@ export function callCliAgent(params: CliAgentCallInput): Promise<AgentCallerResu
             inputTokens: getUsageValue(parsedPayload, "input_tokens"),
             outputTokens: getUsageValue(parsedPayload, "output_tokens"),
             tool_calls: toolCalls,
+            model: typeof parsedRecord.model === "string" ? parsedRecord.model : undefined,
+            modelVersion:
+              typeof parsedRecord.model_version === "string"
+                ? parsedRecord.model_version
+                : undefined,
+            promptHash:
+              typeof parsedRecord.prompt_hash === "string"
+                ? parsedRecord.prompt_hash
+                : undefined,
+            startedAt:
+              typeof parsedRecord.started_at === "string"
+                ? parsedRecord.started_at
+                : undefined,
+            completedAt:
+              typeof parsedRecord.completed_at === "string"
+                ? parsedRecord.completed_at
+                : undefined,
+            estimatedCostUsd:
+              typeof parsedRecord.estimated_cost_usd === "number"
+                ? parsedRecord.estimated_cost_usd
+                : typeof parsedRecord.cost_usd === "number"
+                  ? parsedRecord.cost_usd
+                  : undefined,
           });
           return;
         }

@@ -9,6 +9,14 @@ import { promisify } from "node:util";
 import chalk from "chalk";
 import yaml from "js-yaml";
 import {
+  appendToManifest,
+  buildAgentTrace,
+  buildPromptHash,
+  writeTrace,
+  type AgentTrace,
+  type TraceFlag,
+} from "@agentura/core";
+import {
   callCliAgent,
   callHttpAgent,
   formatLlmJudgeProviderLogMessage,
@@ -29,6 +37,7 @@ import type {
   JsonObject,
   JsonValue,
   SuiteRunResult,
+  ToolCall,
 } from "@agentura/types";
 import { z } from "zod";
 
@@ -166,10 +175,17 @@ interface DatasetChange {
   currentCaseCount: number;
 }
 
+interface LocalTraceCaptureOptions {
+  runId: string;
+  agentId: string;
+  recordTrace: (trace: AgentTrace) => void;
+}
+
 type GoldenScorer = "exact_match" | "fuzzy_match" | "contains" | "semantic_similarity";
 
 const execFile = promisify(execFileCallback);
 const LOCAL_STATE_DIR = ".agentura";
+const TRACE_FAILURE_DIR = path.join(LOCAL_STATE_DIR, "traces", "eval-failures");
 const BASELINE_FILE_NAME = "baseline.json";
 const DIFF_FILE_NAME = "diff.json";
 const MANIFEST_FILE_NAME = "manifest.json";
@@ -828,11 +844,12 @@ function isSuitePassed(suite: ParsedSuite, result: SuiteRunResult): boolean {
 }
 
 function buildEvalRunManifest(
+  runId: string,
   completedSuites: CompletedSuiteRun[],
   commit: string | null
 ): EvalRunManifest {
   return {
-    run_id: randomUUID(),
+    run_id: runId,
     timestamp: new Date().toISOString(),
     commit,
     cli_version: CLI_VERSION,
@@ -897,6 +914,195 @@ function printDatasetChangeWarnings(changes: DatasetChange[]): void {
     );
   });
   console.log("");
+}
+
+function inferAgentId(agentConfig: ParsedConfig["agent"]): string {
+  if (agentConfig.type === "http") {
+    try {
+      const url = new URL(agentConfig.endpoint as string);
+      return url.pathname.length > 1 ? url.pathname : url.host;
+    } catch {
+      return agentConfig.endpoint ?? "http-agent";
+    }
+  }
+
+  if (agentConfig.type === "cli") {
+    return (agentConfig.command ?? "cli-agent").trim();
+  }
+
+  return path.basename(agentConfig.module as string, path.extname(agentConfig.module as string));
+}
+
+function buildTraceLookupKey(
+  input: string,
+  output: string | null | undefined,
+  inputTokens?: number,
+  outputTokens?: number
+): string {
+  return JSON.stringify([
+    input,
+    output ?? null,
+    inputTokens ?? 0,
+    outputTokens ?? 0,
+  ]);
+}
+
+function createTraceStore() {
+  const tracesByKey = new Map<string, AgentTrace[]>();
+
+  return {
+    record(trace: AgentTrace): void {
+      const key = buildTraceLookupKey(
+        trace.input,
+        trace.output,
+        trace.token_usage.input,
+        trace.token_usage.output
+      );
+      const existing = tracesByKey.get(key) ?? [];
+      existing.push(trace);
+      tracesByKey.set(key, existing);
+    },
+    claim(caseResult: EvalCaseResult): AgentTrace | null {
+      const conversationTurns = caseResult.conversation_turn_results ?? [];
+      for (let index = conversationTurns.length - 1; index >= 0; index -= 1) {
+        const turn = conversationTurns[index];
+        if (!turn) {
+          continue;
+        }
+
+        const key = buildTraceLookupKey(
+          turn.input,
+          turn.output,
+          turn.inputTokens,
+          turn.outputTokens
+        );
+        const existing = tracesByKey.get(key);
+        const trace = existing?.shift() ?? null;
+        if (trace) {
+          return trace;
+        }
+      }
+
+      const key = buildTraceLookupKey(
+        caseResult.input,
+        caseResult.output,
+        caseResult.inputTokens,
+        caseResult.outputTokens
+      );
+      const existing = tracesByKey.get(key);
+      return existing?.shift() ?? null;
+    },
+  };
+}
+
+function mergeTraceFlags(flags: TraceFlag[]): TraceFlag[] {
+  const seen = new Set<string>();
+  return flags.filter((flag) => {
+    const key = JSON.stringify(flag);
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function buildEvalFailureFlags(suite: ParsedSuite, caseResult: EvalCaseResult): TraceFlag[] {
+  const flags: TraceFlag[] = [];
+
+  if (
+    suite.type === "llm_judge" &&
+    typeof caseResult.agreement_rate === "number" &&
+    caseResult.agreement_rate < 0.7
+  ) {
+    flags.push({
+      type: "consensus_disagreement",
+      agreement_rate: caseResult.agreement_rate,
+    });
+  }
+
+  if (suite.type === "tool_use" && caseResult.tool_called === false) {
+    flags.push({ type: "no_tool_call_expected" });
+  }
+
+  if (suite.type === "performance") {
+    const thresholdMs = getPerformanceThresholdMs(suite);
+    if (thresholdMs && caseResult.latencyMs > thresholdMs) {
+      flags.push({
+        type: "latency_exceeded",
+        threshold_ms: thresholdMs,
+        actual_ms: caseResult.latencyMs,
+      });
+    }
+  }
+
+  return mergeTraceFlags(flags);
+}
+
+function createFallbackFailureTrace(
+  runId: string,
+  agentId: string,
+  suite: ParsedSuite,
+  caseResult: EvalCaseResult
+): AgentTrace {
+  return buildAgentTrace({
+    runId,
+    agentId,
+    input: caseResult.input,
+    output: caseResult.output ?? "",
+    agentResult: {
+      output: caseResult.output ?? "",
+      latencyMs: caseResult.latencyMs,
+      inputTokens: caseResult.inputTokens,
+      outputTokens: caseResult.outputTokens,
+      tool_calls: caseResult.tool_calls,
+      promptHash: buildPromptHash(),
+    },
+    flags: buildEvalFailureFlags(suite, caseResult),
+    redactToolOutputs: true,
+  });
+}
+
+async function writeFailedCaseTraces(
+  cwd: string,
+  runId: string,
+  agentId: string,
+  completedSuites: CompletedSuiteRun[],
+  traceStore: ReturnType<typeof createTraceStore>
+): Promise<number> {
+  let written = 0;
+
+  for (const suiteRun of completedSuites) {
+    for (const caseResult of suiteRun.result.cases) {
+      if (caseResult.passed) {
+        continue;
+      }
+
+      const trace =
+        traceStore.claim(caseResult) ??
+        createFallbackFailureTrace(runId, agentId, suiteRun.suite, caseResult);
+      const normalizedTrace = {
+        ...trace,
+        flags: mergeTraceFlags([
+          ...trace.flags,
+          ...buildEvalFailureFlags(suiteRun.suite, caseResult),
+        ]),
+      };
+      const tracePath = await writeTrace(normalizedTrace, {
+        cwd,
+        outDir: TRACE_FAILURE_DIR,
+      });
+
+      await appendToManifest(normalizedTrace, {
+        cwd,
+        outDir: TRACE_FAILURE_DIR,
+        tracePath,
+      });
+      written += 1;
+    }
+  }
+
+  return written;
 }
 
 function renderTable(rows: LocalSuiteSummaryRow[]): string {
@@ -1005,11 +1211,59 @@ async function loadSdkAgentFunction(modulePath: string, cwd: string): Promise<Ag
   return agentFn;
 }
 
-function createLocalAgentFunction(agentConfig: ParsedConfig["agent"], cwd: string): AgentFunction {
+function createLocalAgentFunction(
+  agentConfig: ParsedConfig["agent"],
+  cwd: string,
+  traceCapture?: LocalTraceCaptureOptions
+): AgentFunction {
   const timeoutMs = agentConfig.timeout_ms ?? 30_000;
+
+  const recordTrace = (
+    input: string,
+    result: {
+      output: string | null;
+      latencyMs: number;
+      inputTokens?: number;
+      outputTokens?: number;
+      tool_calls?: ToolCall[];
+      model?: string;
+      modelVersion?: string;
+      promptHash?: string;
+      startedAt?: string;
+      completedAt?: string;
+    },
+    startedAt: string,
+    completedAt: string
+  ) => {
+    if (!traceCapture) {
+      return;
+    }
+
+    traceCapture.recordTrace(
+      buildAgentTrace({
+        runId: traceCapture.runId,
+        agentId: traceCapture.agentId,
+        input,
+        output: result.output ?? "",
+        agentResult: {
+          output: result.output ?? "",
+          latencyMs: result.latencyMs,
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          tool_calls: result.tool_calls,
+          model: result.model,
+          modelVersion: result.modelVersion,
+          promptHash: result.promptHash ?? buildPromptHash(),
+          startedAt: result.startedAt ?? startedAt,
+          completedAt: result.completedAt ?? completedAt,
+        },
+      })
+    );
+  };
 
   if (agentConfig.type === "http") {
     return async (input: string, options) => {
+      const startedAt = new Date().toISOString();
       const result = await callHttpAgent({
         endpoint: agentConfig.endpoint as string,
         input,
@@ -1017,6 +1271,8 @@ function createLocalAgentFunction(agentConfig: ParsedConfig["agent"], cwd: strin
         timeoutMs,
         headers: agentConfig.headers,
       });
+      const completedAt = new Date().toISOString();
+      recordTrace(input, result, startedAt, completedAt);
 
       if (result.output === null) {
         throw new Error(result.errorMessage ?? "HTTP agent call failed");
@@ -1028,12 +1284,19 @@ function createLocalAgentFunction(agentConfig: ParsedConfig["agent"], cwd: strin
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
         tool_calls: result.tool_calls,
+        model: result.model,
+        modelVersion: result.modelVersion,
+        promptHash: result.promptHash,
+        startedAt: result.startedAt ?? startedAt,
+        completedAt: result.completedAt ?? completedAt,
+        estimatedCostUsd: result.estimatedCostUsd,
       };
     };
   }
 
   if (agentConfig.type === "cli") {
     return async (input: string, options) => {
+      const startedAt = new Date().toISOString();
       const result = await callCliAgent({
         command: agentConfig.command as string,
         input,
@@ -1042,6 +1305,8 @@ function createLocalAgentFunction(agentConfig: ParsedConfig["agent"], cwd: strin
         cwd,
         env: process.env,
       });
+      const completedAt = new Date().toISOString();
+      recordTrace(input, result, startedAt, completedAt);
 
       if (result.output === null) {
         throw new Error(result.errorMessage ?? "CLI agent call failed");
@@ -1053,17 +1318,26 @@ function createLocalAgentFunction(agentConfig: ParsedConfig["agent"], cwd: strin
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
         tool_calls: result.tool_calls,
+        model: result.model,
+        modelVersion: result.modelVersion,
+        promptHash: result.promptHash,
+        startedAt: result.startedAt ?? startedAt,
+        completedAt: result.completedAt ?? completedAt,
+        estimatedCostUsd: result.estimatedCostUsd,
       };
     };
   }
 
   return async (input: string, options) => {
     const sdkAgentFn = await loadSdkAgentFunction(agentConfig.module as string, cwd);
+    const startedAt = new Date().toISOString();
     const result = await callSdkAgent({
       input,
       agentFn: sdkAgentFn,
       options,
     });
+    const completedAt = new Date().toISOString();
+    recordTrace(input, result, startedAt, completedAt);
 
     if (result.output === null) {
       throw new Error(result.errorMessage ?? "SDK agent call failed");
@@ -1075,6 +1349,12 @@ function createLocalAgentFunction(agentConfig: ParsedConfig["agent"], cwd: strin
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
       tool_calls: result.tool_calls,
+      model: result.model,
+      modelVersion: result.modelVersion,
+      promptHash: result.promptHash,
+      startedAt: result.startedAt ?? startedAt,
+      completedAt: result.completedAt ?? completedAt,
+      estimatedCostUsd: result.estimatedCostUsd,
     };
   };
 }
@@ -1327,7 +1607,16 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
   const startedAt = performance.now();
   const config = await loadAgenturaConfig(cwd);
   const baselinePath = getLocalStatePath(cwd, BASELINE_FILE_NAME);
-  const agentFn = createLocalAgentFunction(config.agent, cwd);
+  const runId = randomUUID();
+  const agentId = inferAgentId(config.agent);
+  const traceStore = createTraceStore();
+  const agentFn = createLocalAgentFunction(config.agent, cwd, {
+    runId,
+    agentId,
+    recordTrace: (trace) => {
+      traceStore.record(trace);
+    },
+  });
   const suites = options.suite
     ? config.evals.filter((suite) => suite.name === options.suite)
     : config.evals;
@@ -1395,7 +1684,7 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
 
   const currentCommit = await getGitCommitSha(cwd);
   const currentSnapshot = buildBaselineSnapshot(completedSuites, currentCommit);
-  const manifest = buildEvalRunManifest(completedSuites, currentCommit);
+  const manifest = buildEvalRunManifest(runId, completedSuites, currentCommit);
   const baselineReadResult = options.resetBaseline
     ? { snapshot: null, error: null }
     : await readBaselineSnapshot(cwd);
@@ -1451,6 +1740,13 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
   }
 
   await writeEvalRunManifest(cwd, manifest);
+  const failedCaseTraceCount = await writeFailedCaseTraces(
+    cwd,
+    runId,
+    agentId,
+    completedSuites,
+    traceStore
+  );
 
   const failedSuites = completedRows.filter((row) => !row.passed && !row.skipped).length;
   const lockedDatasetChanges = options.locked ? datasetChanges.length : 0;
@@ -1465,6 +1761,12 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
   console.log(
     `${String(failedSuites)} of ${String(completedRows.length)} suites failed. Exit code: ${String(exitCode)}`
   );
+
+  if (failedCaseTraceCount > 0) {
+    console.log(
+      `↳ ${String(failedCaseTraceCount)} failed ${pluralize(failedCaseTraceCount, "case")} written to .agentura/traces/eval-failures/`
+    );
+  }
 
   if (skippedReasons.length > 0) {
     [...new Set(skippedReasons)].forEach((reason) => console.log(chalk.yellow(reason)));

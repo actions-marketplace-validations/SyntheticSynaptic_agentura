@@ -22,6 +22,12 @@ export interface AgentCallerResult {
   inputTokens?: number;
   outputTokens?: number;
   tool_calls?: ToolCall[];
+  model?: string;
+  modelVersion?: string;
+  promptHash?: string;
+  startedAt?: string;
+  completedAt?: string;
+  estimatedCostUsd?: number;
   errorMessage?: string;
 }
 
@@ -100,6 +106,24 @@ export function getUsageValue(payload: unknown, key: string): number | undefined
   return toInteger((usage as Record<string, unknown>)[key]);
 }
 
+function getStringField(payload: unknown, key: string): string | undefined {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function getNumberField(payload: unknown, key: string): number | undefined {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 export function getOutputValue(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") {
     return null;
@@ -127,12 +151,20 @@ export function getToolCallsValue(payload: unknown): ToolCall[] | undefined {
       }
 
       const args = toJsonObject(value.args);
-      const result = typeof value.result === "string" ? value.result : undefined;
+      const result = toJsonValue(value.result);
+      const timestamp = typeof value.timestamp === "string" ? value.timestamp : undefined;
+      const dataAccessed =
+        Array.isArray(value.data_accessed) &&
+        value.data_accessed.every((entry) => typeof entry === "string")
+          ? [...value.data_accessed]
+          : undefined;
 
       return {
         name: value.name,
         ...(args ? { args } : {}),
         ...(result !== undefined ? { result } : {}),
+        ...(timestamp ? { timestamp } : {}),
+        ...(dataAccessed ? { data_accessed: dataAccessed } : {}),
       };
     })
     .filter((value): value is ToolCall => value !== null);
@@ -199,6 +231,16 @@ export async function callHttpAgent(params: HttpAgentCallInput): Promise<AgentCa
       inputTokens,
       outputTokens,
       tool_calls: getToolCallsValue(payload),
+      model: getStringField(payload, "model") ?? response.headers.get("x-model") ?? undefined,
+      modelVersion:
+        getStringField(payload, "model_version") ??
+        response.headers.get("x-model-version") ??
+        undefined,
+      promptHash: getStringField(payload, "prompt_hash"),
+      startedAt: getStringField(payload, "started_at"),
+      completedAt: getStringField(payload, "completed_at"),
+      estimatedCostUsd:
+        getNumberField(payload, "estimated_cost_usd") ?? getNumberField(payload, "cost_usd"),
     };
   } catch (error) {
     const latencyMs = Math.max(0, Math.round(performance.now() - startedAt));
