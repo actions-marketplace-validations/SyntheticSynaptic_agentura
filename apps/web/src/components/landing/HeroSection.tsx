@@ -5,13 +5,6 @@ import { PrGateWidget } from "./PrGateWidget";
 const playgroundUrl = "https://agentura-playground.vercel.app";
 const githubUrl = "https://github.com/SyntheticSynaptic/agentura";
 
-const STATS = [
-  { value: "< 10 min", label: "setup" },
-  { value: "0", label: "code changes" },
-  { value: "3", label: "eval strategies" },
-  { value: "MIT", label: "license" },
-];
-
 export function HeroSection() {
   return (
     <section className="hero-shell" id="top">
@@ -32,20 +25,6 @@ export function HeroSection() {
           <a className="secondary-button" href={githubUrl} target="_blank" rel="noreferrer">
             View on GitHub
           </a>
-        </div>
-
-        <div className="hero-tech-strip mono" aria-label="Core product coverage">
-          <p>Catch regressions in accuracy, safety, cost, and guardrails.</p>
-        </div>
-
-        <div className="hero-stats mono" aria-label="Key product facts">
-          {STATS.map((item, index) => (
-            <div key={item.label} className="stat-item">
-              <strong>{item.value}</strong>
-              <span>{item.label}</span>
-              {index < STATS.length - 1 ? <i aria-hidden="true" /> : null}
-            </div>
-          ))}
         </div>
       </div>
 
@@ -88,7 +67,8 @@ export function HeroSection() {
         }
 
         .hero-actions {
-          margin-top: 18px;
+          margin-top: 26px;
+          padding: 8px 0;
           display: flex;
           justify-content: center;
           gap: 12px;
@@ -127,51 +107,6 @@ export function HeroSection() {
           transform: translateY(-1px);
         }
 
-        .hero-tech-strip {
-          margin: 16px auto 0;
-          padding: 16px 0;
-          color: var(--muted);
-          font-size: 13px;
-          line-height: 1.8;
-          text-align: center;
-        }
-
-        .hero-tech-strip p {
-          margin: 0;
-        }
-
-        .hero-stats {
-          margin: 6px auto 0;
-          display: flex;
-          width: fit-content;
-          max-width: 100%;
-          flex-wrap: wrap;
-          justify-content: center;
-          gap: 14px;
-          color: var(--muted);
-        }
-
-        .stat-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 12px;
-          letter-spacing: 0.01em;
-        }
-
-        .stat-item strong {
-          color: var(--text);
-          font-weight: 500;
-        }
-
-        .stat-item i {
-          display: inline-block;
-          width: 1px;
-          height: 12px;
-          margin-left: 6px;
-          background: var(--border);
-        }
-
         .hero-visual {
           max-width: 840px;
           margin: 36px auto 0;
@@ -189,21 +124,6 @@ export function HeroSection() {
         @media (max-width: 640px) {
           .hero-shell {
             padding-top: 92px;
-          }
-
-          .hero-stats {
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-          }
-
-          .hero-tech-strip {
-            padding-top: 14px;
-            padding-bottom: 14px;
-          }
-
-          .stat-item i {
-            display: none;
           }
         }
       `}</style>

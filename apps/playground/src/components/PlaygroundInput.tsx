@@ -37,9 +37,7 @@ type EvalResult = {
 };
 
 const DEFAULT_SYSTEM_PROMPT =
-  `You are a helpful assistant that answers questions about store
-policies clearly, accurately, and in a professional tone.
-If a policy detail is unknown, say so plainly and do not invent it.`;
+  "You are a helpful assistant that answers questions about store policies clearly, accurately, and in a professional tone. If a policy detail is unknown, say so plainly and do not invent it.";
 
 const BRANCH_OPTIONS: BranchOption[] = [
   {

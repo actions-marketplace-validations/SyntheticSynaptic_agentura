@@ -13,7 +13,7 @@ export default function HomePage() {
             agentura
           </a>
           <a className="back-link" href={mainSiteUrl}>
-            ← Back to agentura-ci.vercel.app
+            ← Back to Home
           </a>
         </div>
       </nav>
@@ -62,6 +62,7 @@ export default function HomePage() {
             font-family: var(--body);
             font-size: 14px;
             text-decoration: none;
+            white-space: nowrap;
           }
 
           .page-shell {
@@ -97,13 +98,18 @@ export default function HomePage() {
             font-size: 18px;
             line-height: 1.6;
             text-align: center;
+            white-space: nowrap;
           }
 
           @media (max-width: 720px) {
             .site-nav-inner {
               padding: 16px 24px;
-              flex-direction: column;
-              align-items: flex-start;
+            }
+          }
+
+          @media (max-width: 480px) {
+            .subhead {
+              white-space: normal;
             }
           }
         `}</style>

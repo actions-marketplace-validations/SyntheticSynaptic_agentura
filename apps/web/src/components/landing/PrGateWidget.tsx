@@ -46,7 +46,10 @@ export function PrGateWidget() {
 
   return (
     <div className="widget-shell">
-      <p className="widget-label">agentura-ci · pull request #47 · eval gate</p>
+      <div className="widget-label">
+        <p className="widget-label-kicker">Catch regressions in accuracy, safety, cost, and guardrails.</p>
+        <p className="widget-label-copy">What a pull request looks like with Agentura installed.</p>
+      </div>
 
       <div className="tab-row" role="tablist" aria-label="PR gate states">
         {TAB_OPTIONS.map((tab) => {
@@ -97,8 +100,21 @@ export function PrGateWidget() {
 
         .widget-label {
           margin: 0 0 12px;
+        }
+
+        .widget-label-kicker {
+          margin: 0;
           font-family: var(--mono);
-          font-size: 11px;
+          font-size: 12px;
+          color: var(--teal);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .widget-label-copy {
+          margin: 4px 0 0;
+          font-family: var(--body);
+          font-size: 14px;
           color: var(--muted);
         }
 

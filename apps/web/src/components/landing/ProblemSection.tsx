@@ -12,17 +12,17 @@ const CARDS: ProblemCard[] = [
   {
     icon: "prompt",
     title: "A prompt change shifts behavior downstream",
-    body: "A tone adjustment that passes review can silently change how edge cases are handled.",
+    body: "YA tone adjustment that passes review can silently change how edge cases are handled.",
   },
   {
     icon: "model",
     title: "Your provider updated the model",
-    body: "Silent updates from model providers change output distributions. No changelog. No warning.",
+    body: "Model providers update their models without notice. Outputs change.",
   },
   {
     icon: "audit",
     title: "No record of what changed or when",
-    body: "When something goes wrong in production, there is no log of which eval passed, which failed, or what the baseline was.",
+    body: "Without a log, there's no way to know what changed between a passing eval and a failing one.",
   },
 ];
 
