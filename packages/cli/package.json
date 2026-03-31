@@ -1,7 +1,25 @@
 {
   "name": "agentura",
   "version": "0.3.0",
-  "description": "Automated eval checks for AI agents on every PR",
+  "description": "Eval CI/CD for AI agents. Catch regressions before merge.",
+  "homepage": "https://agentura-ci.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SyntheticSynaptic/agentura"
+  },
+  "bugs": {
+    "url": "https://github.com/SyntheticSynaptic/agentura/issues"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "eval",
+    "ci-cd",
+    "llm",
+    "testing",
+    "regression"
+  ],
+  "license": "MIT",
   "bin": {
     "agentura": "dist/index.js"
   },
