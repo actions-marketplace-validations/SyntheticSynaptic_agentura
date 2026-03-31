@@ -2779,3 +2779,36 @@ Continue Milestone 19 playground polish if any further header or spacing feedbac
 
 **Next session:**
 Continue Milestone 19 playground polish if any additional UI feedback comes in after this nav layout fix lands.
+
+## Session — 2026-03-31 08:12 UTC
+
+**Milestone:** 19 — Dashboard Polish + Settings
+**Status:** IN PROGRESS
+
+**Files created:**
+- None
+
+**Files modified:**
+- `apps/playground/src/app/page.tsx` — replaced the broken playground header with the main-site nav structure trimmed to `agentura`, `How It Works`, `Docs`, `GitHub`, and `★ Star`
+- `apps/playground/src/components/PlaygroundInput.tsx` — reduced the client cooldown from 15s to 10s and normalized/styled merge decision text so `MERGE ALLOWED` and `MERGE BLOCKED` render with visible spacing
+- `apps/worker/src/index.ts` — added `drainDelay: 5` to the BullMQ worker options to reduce idle Redis polling
+- `docs/Documentation.md` — appended this session summary
+
+**Decisions made:**
+- Copied the homepage nav structure into the playground page instead of trying to salvage the previous minimal header so the rendered HTML now has explicit brand, center-link, and action sections.
+- Kept the merge-decision fix inside `PlaygroundInput.tsx` because there is no separate `PlaygroundResults.tsx` component in this workspace.
+
+**Validation results:**
+- `pnpm --filter @agentura/playground type-check`: PASS
+- `pnpm --filter @agentura/worker type-check`: PASS
+- `pnpm run type-check`: PASS
+- `pnpm --filter @agentura/playground build`: PASS
+- Rendered verification from `apps/playground/.next/server/app/index.html`: PASS for separate `site-nav-inner`, `site-nav-links`, and `site-nav-actions` sections
+- Compiled verification from `apps/playground/.next/static/chunks/app/page-8e75324ff1370498.js`: PASS for sticky nav flex layout and 10-second cooldown / merge-spacing rendering changes
+
+**Issues found:**
+- `pnpm --filter @agentura/playground build` again rewrote `next-env.d.ts` and `tsconfig.json` with generated Next.js changes, so those files were restored before commit to keep the diff scoped.
+- The build emitted the existing non-fatal Google Fonts download warning in this network-restricted environment.
+
+**Next session:**
+Continue Milestone 19 UI polish on the playground and settings surfaces, using prerendered HTML checks when browser/server verification is blocked by the sandbox.

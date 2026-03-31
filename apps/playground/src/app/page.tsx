@@ -4,17 +4,30 @@ import { PlaygroundInput } from "../components/PlaygroundInput";
 
 export default function HomePage() {
   const mainSiteUrl = "https://agentura-ci.vercel.app";
+  const howItWorksUrl = "https://agentura-ci.vercel.app/#how-it-works";
+  const docsUrl = "https://agentura-ci.vercel.app/docs";
   const githubUrl = "https://github.com/SyntheticSynaptic/agentura";
 
   return (
     <>
       <nav className="site-nav">
-        <a className="brand" href={mainSiteUrl}>
-          Agentura
-        </a>
-        <a className="nav-link" href={githubUrl} target="_blank" rel="noreferrer">
-          GitHub
-        </a>
+        <div className="site-nav-inner">
+          <a className="brand" href={mainSiteUrl}>
+            agentura
+          </a>
+          <div className="site-nav-links">
+            <a href={howItWorksUrl}>How It Works</a>
+            <a href={docsUrl}>Docs</a>
+          </div>
+          <div className="site-nav-actions">
+            <a href={githubUrl} target="_blank" rel="noreferrer">
+              GitHub
+            </a>
+            <a className="star-button" href={githubUrl} target="_blank" rel="noreferrer">
+              ★ Star
+            </a>
+          </div>
+        </div>
       </nav>
 
       <main className="page-shell">
@@ -33,13 +46,22 @@ export default function HomePage() {
 
         <style jsx>{`
           .site-nav {
-            display: flex;
-            width: 100%;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px 32px;
+            position: sticky;
+            top: 0;
+            z-index: 50;
             border-bottom: 1px solid var(--border);
             background: var(--bg);
+          }
+
+          .site-nav-inner {
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            max-width: 1240px;
+            height: 56px;
+            padding: 0 32px;
+            gap: 24px;
           }
 
           .brand {
@@ -50,13 +72,40 @@ export default function HomePage() {
             text-decoration: none;
           }
 
-          .nav-link {
+          .site-nav-links {
+            display: flex;
+            align-items: center;
+            gap: 32px;
+          }
+
+          .site-nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+          }
+
+          .site-nav-links a,
+          .site-nav-actions a {
             color: var(--muted);
             font-family: var(--body);
             font-size: 14px;
             text-decoration: none;
-            margin-left: auto;
             white-space: nowrap;
+          }
+
+          .site-nav-links a:hover,
+          .site-nav-actions a:hover {
+            color: var(--text);
+          }
+
+          .star-button {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 13px;
+            color: var(--text) !important;
+            background: transparent;
+            cursor: pointer;
           }
 
           .page-shell {
@@ -96,8 +145,22 @@ export default function HomePage() {
           }
 
           @media (max-width: 720px) {
-            .site-nav {
+            .site-nav-inner {
+              height: auto;
               padding: 16px 24px;
+              flex-wrap: wrap;
+              gap: 12px;
+            }
+
+            .site-nav-links {
+              order: 3;
+              width: 100%;
+              justify-content: center;
+              gap: 16px;
+            }
+
+            .site-nav-actions {
+              margin-left: auto;
             }
           }
 

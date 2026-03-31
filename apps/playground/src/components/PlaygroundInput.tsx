@@ -82,6 +82,19 @@ function getScenarioLabel(value: string) {
   return BRANCH_OPTIONS.find((option) => option.value === value)?.label ?? value;
 }
 
+function formatDecisionLabel(decision: string) {
+  const normalized = decision.replace(/\s+/g, "").toUpperCase();
+  if (normalized === "MERGEBLOCKED") {
+    return "MERGE BLOCKED";
+  }
+
+  if (normalized === "MERGEALLOWED") {
+    return "MERGE ALLOWED";
+  }
+
+  return decision;
+}
+
 export function PlaygroundInput() {
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [userMessage, setUserMessage] = useState("What is the return policy?");
@@ -160,7 +173,7 @@ export function PlaygroundInput() {
 
       const data = (await res.json()) as EvalResult;
       setResults(data);
-      startCooldown(15);
+      startCooldown(10);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to run playground eval");
     } finally {
@@ -178,6 +191,8 @@ export function PlaygroundInput() {
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
   }
+
+  const decisionLabel = results ? formatDecisionLabel(results.decision) : null;
 
   return (
     <section className="playground-shell">
@@ -232,9 +247,9 @@ export function PlaygroundInput() {
               <div className="panel-head panel-head-row">
                 <div>
                   <p className="panel-kicker">RESULT</p>
-                  <h2>{results.decision}</h2>
+                  <h2 className="decision-heading">{decisionLabel}</h2>
                 </div>
-                <p className={`decision-chip ${results.decision === "MERGE BLOCKED" ? "decision-chip-blocked" : "decision-chip-pass"}`}>
+                <p className={`decision-chip ${decisionLabel === "MERGE BLOCKED" ? "decision-chip-blocked" : "decision-chip-pass"}`}>
                   {getScenarioLabel(results.scenario)}
                 </p>
               </div>
@@ -355,11 +370,13 @@ export function PlaygroundInput() {
           color: var(--teal);
         }
 
-        h2 {
+        .decision-heading {
           margin: 0;
           font-family: var(--display);
-          font-size: clamp(1.6rem, 3vw, 2.6rem);
-          letter-spacing: -0.05em;
+          font-size: clamp(28px, 3vw, 42px);
+          font-weight: 700;
+          letter-spacing: 0.05em;
+          white-space: pre;
         }
 
         .field {

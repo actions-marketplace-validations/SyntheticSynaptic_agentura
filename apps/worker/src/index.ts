@@ -92,6 +92,7 @@ async function startWorker(): Promise<void> {
   const worker = new Worker<EvalRunJobPayload>("eval-run", handleEvalRunJob, {
     connection,
     concurrency: 3,
+    drainDelay: 5,
   });
 
   worker.on("error", (error) => {
