@@ -3,18 +3,15 @@
 import { PlaygroundInput } from "../components/PlaygroundInput";
 
 export default function HomePage() {
-  const mainSiteUrl = process.env.NEXT_PUBLIC_MAIN_SITE_URL ?? "https://agentura-ci.vercel.app";
   const githubUrl = "https://github.com/SyntheticSynaptic/agentura";
 
   return (
     <>
       <nav className="site-nav">
         <div className="site-nav-inner">
-          <a className="brand" href={mainSiteUrl}>
-            agentura
-          </a>
+          <span className="brand">Agentura</span>
           <a className="nav-link" href={githubUrl} target="_blank" rel="noreferrer">
-            GitHub
+            Github
           </a>
         </div>
       </nav>

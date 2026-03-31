@@ -2724,3 +2724,29 @@ Restore full local browser automation for landing-page checks or keep relying on
 
 **Next session:**
 Continue Milestone 19 polish work, focusing on any remaining playground/header issues after this nav cleanup deploys.
+
+## Session — 2026-03-31 06:03 UTC
+
+**Milestone:** 19 — Dashboard Polish + Settings
+**Status:** IN PROGRESS
+
+**Files created:**
+- None
+
+**Files modified:**
+- `apps/playground/src/app/page.tsx` — changed the left nav item to plain `Agentura` text and set the right nav link label to `Github`, removing the remaining home-link behavior from the brand
+- `docs/Documentation.md` — appended this session summary
+
+**Decisions made:**
+- The playground header now treats `Agentura` as a static brand label so the top bar only exposes one actionable destination: the GitHub link on the right.
+
+**Validation results:**
+- `pnpm --filter @agentura/playground type-check`: PASS
+- `pnpm --filter @agentura/playground build`: PASS
+- `pnpm run type-check`: PASS
+
+**Issues found:**
+- `pnpm --filter @agentura/playground build` emitted the existing non-fatal Google Fonts download warning in this network-restricted environment, but the build completed successfully.
+
+**Next session:**
+Continue Milestone 19 playground polish if any further header or spacing feedback comes in after this simpler nav deploys.
