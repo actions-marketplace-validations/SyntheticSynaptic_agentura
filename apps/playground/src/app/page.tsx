@@ -3,92 +3,111 @@
 import { PlaygroundInput } from "../components/PlaygroundInput";
 
 export default function HomePage() {
+  const mainSiteUrl = process.env.NEXT_PUBLIC_MAIN_SITE_URL ?? "https://agentura-ci.vercel.app";
+
   return (
-    <main className="page-shell">
-      <div className="page-frame">
-        <header className="hero">
-          <div className="hero-copy">
-            <p className="eyebrow">AGENTURA PLAYGROUND</p>
-            <h1>Watch a branch change trip a merge gate before it reaches production.</h1>
-            <p className="subhead">
-              This is the smallest honest demo of Agentura’s core loop: baseline on main, branch comparison, suite
-              scores, and a merge decision you can share.
-            </p>
-          </div>
-          <a className="back-link" href={process.env.NEXT_PUBLIC_MAIN_SITE_URL ?? "https://agentura-ci.vercel.app"}>
-            Back to Agentura
+    <>
+      <nav className="site-nav">
+        <div className="site-nav-inner">
+          <a className="brand" href={mainSiteUrl}>
+            agentura
           </a>
-        </header>
+          <a className="back-link" href={mainSiteUrl}>
+            ← Back to agentura-ci.vercel.app
+          </a>
+        </div>
+      </nav>
 
-        <PlaygroundInput />
-      </div>
+      <main className="page-shell">
+        <div className="page-frame">
+          <header className="hero">
+            <h1>
+              Run a live eval.
+              <br />
+              See what breaks before merge.
+            </h1>
+            <p className="subhead">Pick a scenario, run the comparison, share the result.</p>
+          </header>
 
-      <style jsx>{`
-        .page-shell {
-          min-height: 100vh;
-          padding: 48px 20px 72px;
-        }
+          <PlaygroundInput />
+        </div>
 
-        .page-frame {
-          margin: 0 auto;
-          max-width: 1240px;
-        }
-
-        .hero {
-          display: flex;
-          align-items: flex-end;
-          justify-content: space-between;
-          gap: 20px;
-          padding-bottom: 24px;
-        }
-
-        .hero-copy {
-          max-width: 780px;
-        }
-
-        .eyebrow {
-          margin: 0 0 14px;
-          font-family: var(--mono);
-          font-size: 11px;
-          letter-spacing: 0.14em;
-          text-transform: uppercase;
-          color: var(--cyan);
-        }
-
-        h1 {
-          margin: 0;
-          font-family: var(--display);
-          font-size: clamp(2.6rem, 6vw, 5rem);
-          line-height: 0.98;
-          letter-spacing: -0.055em;
-        }
-
-        .subhead {
-          margin: 18px 0 0;
-          max-width: 700px;
-          font-size: clamp(1.08rem, 2vw, 1.32rem);
-          line-height: 1.65;
-          color: var(--muted);
-        }
-
-        .back-link {
-          flex: none;
-          border: 1px solid var(--border);
-          background: rgba(17, 20, 35, 0.78);
-          padding: 11px 14px;
-          font-size: 14px;
-          font-weight: 600;
-          color: var(--text);
-          text-decoration: none;
-        }
-
-        @media (max-width: 900px) {
-          .hero {
-            flex-direction: column;
-            align-items: flex-start;
+        <style jsx>{`
+          .site-nav {
+            border-bottom: 1px solid var(--border);
+            background: var(--bg);
           }
-        }
-      `}</style>
-    </main>
+
+          .site-nav-inner {
+            margin: 0 auto;
+            display: flex;
+            max-width: 1100px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 16px 32px;
+          }
+
+          .brand {
+            color: var(--text);
+            font-family: var(--display);
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            text-decoration: none;
+          }
+
+          .back-link {
+            color: var(--muted);
+            font-family: var(--body);
+            font-size: 14px;
+            text-decoration: none;
+          }
+
+          .page-shell {
+            min-height: 100vh;
+            padding: 0 24px 72px;
+          }
+
+          .page-frame {
+            margin: 0 auto;
+            max-width: 1100px;
+          }
+
+          .hero {
+            padding-top: 0;
+          }
+
+          h1 {
+            margin: 48px auto 8px;
+            color: var(--text);
+            font-family: var(--display);
+            font-size: clamp(32px, 5vw, 52px);
+            font-weight: 700;
+            line-height: 1.1;
+            text-align: center;
+            letter-spacing: -0.05em;
+          }
+
+          .subhead {
+            margin: 0 auto 40px;
+            max-width: 420px;
+            color: var(--muted);
+            font-family: var(--body);
+            font-size: 18px;
+            line-height: 1.6;
+            text-align: center;
+          }
+
+          @media (max-width: 720px) {
+            .site-nav-inner {
+              padding: 16px 24px;
+              flex-direction: column;
+              align-items: flex-start;
+            }
+          }
+        `}</style>
+      </main>
+    </>
   );
 }

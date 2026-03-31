@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 type BranchOption = {
   value: "friendly" | "model_swap" | "truncate" | "guardrail";
@@ -38,28 +37,30 @@ type EvalResult = {
 };
 
 const DEFAULT_SYSTEM_PROMPT =
-  "You are a helpful assistant that answers questions about store policies clearly, accurately, and in a professional tone. If a policy detail is unknown, say so plainly and do not invent it.";
+  `You are a helpful assistant that answers questions about store
+policies clearly, accurately, and in a professional tone.
+If a policy detail is unknown, say so plainly and do not invent it.`;
 
 const BRANCH_OPTIONS: BranchOption[] = [
   {
     value: "friendly",
     label: "Friendlier tone",
-    description: 'Adds "Of course!" prefix — tests whether tone shift affects policy behaviour',
+    description: "Does a warmer prompt shift policy behavior?",
   },
   {
     value: "model_swap",
-    label: "Model swap (70B → 8B)",
-    description: "Switches to a smaller model mid-sprint — the most common silent production regression",
+    label: "Model swap",
+    description: "Smaller model, same task — do scores hold?",
   },
   {
     value: "truncate",
-    label: "Truncate system prompt",
-    description: "Cuts system prompt by 50% — simulates context budget reduction",
+    label: "Truncate prompt",
+    description: "Half the context — what instructions survive?",
   },
   {
     value: "guardrail",
     label: "Add safety guardrail",
-    description: "Appends compliance disclaimer — should improve policy score",
+    description: "Compliance clause added — does policy score improve?",
   },
 ];
 
@@ -77,6 +78,10 @@ function decodeResult(encoded: string): EvalResult | null {
   } catch {
     return null;
   }
+}
+
+function getScenarioLabel(value: string) {
+  return BRANCH_OPTIONS.find((option) => option.value === value)?.label ?? value;
 }
 
 export function PlaygroundInput() {
@@ -122,29 +127,6 @@ export function PlaygroundInput() {
 
     return () => window.clearInterval(timer);
   }, [cooldown]);
-
-  const selectedOption = BRANCH_OPTIONS.find((option) => option.value === branchChange) ?? BRANCH_OPTIONS[0];
-
-  const yamlPreview = useMemo(
-    () => `version: 1
-
-agent:
-  type: http
-  endpoint: https://your-agent.example.com/api/agent
-  timeout_ms: 30000
-
-evals:
-  - name: policy-regression
-    type: golden_dataset
-    scorer: contains
-    dataset: ./evals/policy.jsonl
-    threshold: 0.80
-
-# sample case
-# {"input":"${userMessage.replace(/"/g, '\\"')}","expected":"${expectedContains.replace(/"/g, '\\"')}"}
-`,
-    [expectedContains, userMessage]
-  );
 
   function startCooldown(seconds: number) {
     setCooldown(seconds);
@@ -203,9 +185,21 @@ evals:
     <section className="playground-shell">
       <div className="playground-grid">
         <article className="playground-panel input-panel">
-          <div className="panel-head">
-            <p className="panel-kicker">SETUP</p>
-            <h2>Define the baseline and choose the branch mutation.</h2>
+          <div className="field">
+            <span>Scenario</span>
+            <div className="branch-options">
+              {BRANCH_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`branch-card ${branchChange === option.value ? "branch-card-active" : ""}`}
+                  onClick={() => setBranchChange(option.value)}
+                >
+                  <strong>{option.label}</strong>
+                  <small>{option.description}</small>
+                </button>
+              ))}
+            </div>
           </div>
 
           <label className="field">
@@ -224,49 +218,14 @@ evals:
             </label>
           </div>
 
-          <div className="field">
-            <span>Branch change</span>
-            <div className="branch-options">
-              {BRANCH_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={`branch-card ${branchChange === option.value ? "branch-card-active" : ""}`}
-                  onClick={() => setBranchChange(option.value)}
-                >
-                  <strong>{option.label}</strong>
-                  <small>{option.description}</small>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="hint-card">
-            <p className="hint-label">Selected scenario</p>
-            <strong>{selectedOption.label}</strong>
-            <span>{selectedOption.description}</span>
-          </div>
-
           <div className="actions-row">
             <button className="run-button" disabled={cooldown > 0 || isLoading} onClick={handleRun}>
               {isLoading ? "Running eval..." : cooldown > 0 ? `Ready in ${cooldown}s` : "Run Eval →"}
             </button>
-            <Link className="ghost-link" href={process.env.NEXT_PUBLIC_MAIN_SITE_URL ?? "https://agentura-ci.vercel.app"}>
-              Install Agentura
-            </Link>
           </div>
 
-          {error ? <p className="status-error">{error}</p> : <p className="status-copy">5 runs per minute per IP, enforced server-side.</p>}
-
-          <div className="config-card">
-            <div className="config-head">
-              <p className="panel-kicker">YAML PREVIEW</p>
-              <button type="button" className="ghost-inline" onClick={() => navigator.clipboard.writeText(yamlPreview)}>
-                Copy config
-              </button>
-            </div>
-            <pre>{yamlPreview}</pre>
-          </div>
+          {error ? <p className="status-error">{error}</p> : null}
+          <p className="status-copy">5 runs per minute per IP, enforced server-side.</p>
         </article>
 
         <article className="playground-panel result-panel">
@@ -278,7 +237,7 @@ evals:
                   <h2>{results.decision}</h2>
                 </div>
                 <p className={`decision-chip ${results.decision === "MERGE BLOCKED" ? "decision-chip-blocked" : "decision-chip-pass"}`}>
-                  {results.scenario}
+                  {getScenarioLabel(results.scenario)}
                 </p>
               </div>
 
@@ -296,7 +255,7 @@ evals:
               </div>
 
               <div className="metric-table">
-                <div className="metric-row">
+                <div className={`metric-row ${results.gates.accuracy === "BLOCK" ? "metric-row-negative" : "metric-row-positive"}`}>
                   <span>Accuracy</span>
                   <span>
                     {formatScore(results.baseline.accuracy)} → {formatScore(results.branch.accuracy)}
@@ -305,7 +264,7 @@ evals:
                     {results.gates.accuracy}
                   </strong>
                 </div>
-                <div className="metric-row">
+                <div className={`metric-row ${results.gates.tone === "BLOCK" ? "metric-row-negative" : "metric-row-positive"}`}>
                   <span>Tone</span>
                   <span>
                     {formatScore(results.baseline.tone)} → {formatScore(results.branch.tone)}
@@ -314,7 +273,7 @@ evals:
                     {results.gates.tone}
                   </strong>
                 </div>
-                <div className="metric-row">
+                <div className={`metric-row ${results.gates.policy === "BLOCK" ? "metric-row-negative" : "metric-row-positive"}`}>
                   <span>Policy fidelity</span>
                   <span>
                     {formatScore(results.baseline.policy)} → {formatScore(results.branch.policy)}
@@ -356,12 +315,7 @@ evals:
             </>
           ) : (
             <div className="result-empty">
-              <p className="panel-kicker">RESULT</p>
-              <h2>Run the suite to see the branch verdict.</h2>
-              <p>
-                This panel will fill with baseline-versus-branch scores, merge gates, model details, and a shareable
-                result URL once the eval completes.
-              </p>
+              <p>Run the eval to see baseline vs branch scores, gate decisions, and a shareable result URL.</p>
             </div>
           )}
         </article>
@@ -369,24 +323,20 @@ evals:
 
       <style jsx>{`
         .playground-shell {
-          margin-top: 12px;
+          margin-top: 0;
         }
 
         .playground-grid {
           display: grid;
-          grid-template-columns: 1.04fr 0.96fr;
-          gap: 18px;
+          grid-template-columns: 40% 60%;
+          gap: 24px;
+          align-items: start;
         }
 
         .playground-panel {
           border: 1px solid var(--border);
-          background: rgba(17, 20, 35, 0.84);
-          padding: 22px;
-          backdrop-filter: blur(16px);
-        }
-
-        .panel-head {
-          margin-bottom: 16px;
+          border-radius: 16px;
+          padding: 24px;
         }
 
         .panel-head-row {
@@ -394,6 +344,7 @@ evals:
           align-items: flex-start;
           justify-content: space-between;
           gap: 12px;
+          margin-bottom: 18px;
         }
 
         .panel-kicker,
@@ -403,7 +354,7 @@ evals:
           font-size: 11px;
           letter-spacing: 0.12em;
           text-transform: uppercase;
-          color: var(--cyan);
+          color: var(--teal);
         }
 
         h2 {
@@ -417,29 +368,35 @@ evals:
           display: flex;
           flex-direction: column;
           gap: 8px;
-          margin-top: 14px;
+          margin-top: 16px;
         }
 
         .field span {
-          font-family: var(--mono);
-          font-size: 11px;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
+          font-family: var(--body);
+          font-size: 13px;
+          font-weight: 600;
           color: var(--muted);
         }
 
         .field textarea,
         .field input {
           width: 100%;
+          border-radius: 10px;
           border: 1px solid var(--border);
-          background: rgba(7, 8, 13, 0.64);
-          padding: 12px;
+          background: var(--surface2);
+          padding: 12px 14px;
           color: var(--text);
+          outline: none;
+        }
+
+        .field textarea:focus,
+        .field input:focus {
+          border-color: rgba(59, 130, 246, 0.45);
         }
 
         .field-grid {
           display: grid;
-          grid-template-columns: 1fr 1fr;
+          grid-template-columns: 1fr;
           gap: 14px;
         }
 
@@ -449,135 +406,115 @@ evals:
           gap: 12px;
         }
 
-        .branch-card,
-        .hint-card,
-        .result-card,
-        .note-card,
-        .config-card,
-        .output-card {
-          border: 1px solid var(--border);
-          background: rgba(7, 8, 13, 0.55);
+        .input-panel {
+          background: var(--surface);
+        }
+
+        .result-panel {
+          background: var(--surface2);
         }
 
         .branch-card {
           display: flex;
-          min-height: 120px;
           flex-direction: column;
-          gap: 8px;
+          gap: 0;
           align-items: flex-start;
-          padding: 14px;
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          background: var(--surface);
+          padding: 16px;
           text-align: left;
-          color: var(--text);
+          cursor: pointer;
+          transition: border-color 160ms ease, background 160ms ease;
+        }
+
+        .branch-card:hover {
+          border-color: rgba(148, 163, 184, 0.24);
         }
 
         .branch-card strong {
+          color: var(--text);
+          font-family: var(--body);
           font-size: 15px;
+          font-weight: 600;
         }
 
         .branch-card small {
+          margin-top: 4px;
           color: var(--muted);
-          line-height: 1.55;
+          font-family: var(--body);
+          font-size: 13px;
+          line-height: 1.5;
         }
 
         .branch-card-active {
-          border-color: rgba(34, 211, 238, 0.4);
-          box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.25);
-          background: rgba(34, 211, 238, 0.1);
+          border-color: var(--blue);
+          background: var(--blue-dim);
         }
 
-        .hint-card,
-        .note-card {
-          margin-top: 16px;
-          padding: 14px;
-        }
-
-        .hint-card strong,
-        .note-card strong {
-          display: block;
-          font-size: 16px;
-        }
-
-        .hint-card span,
-        .note-card span {
-          margin-top: 8px;
-          display: block;
-          color: var(--muted);
-          line-height: 1.6;
-        }
-
-        .actions-row,
-        .result-actions,
-        .config-head {
-          margin-top: 18px;
+        .actions-row {
+          margin-top: 20px;
           display: flex;
-          align-items: center;
+          flex-direction: column;
           gap: 10px;
-          flex-wrap: wrap;
         }
 
         .run-button,
-        .ghost-link,
         .ghost-inline {
-          border: 1px solid var(--border);
-          padding: 11px 14px;
+          border-radius: 999px;
+          padding: 12px 16px;
           font-size: 14px;
           font-weight: 600;
-          color: var(--text);
-          text-decoration: none;
+          transition: transform 160ms ease, opacity 160ms ease;
         }
 
         .run-button {
-          border-color: rgba(245, 158, 11, 0.42);
-          background: linear-gradient(135deg, rgba(245, 158, 11, 0.22), rgba(245, 158, 11, 0.08));
+          border: 1px solid rgba(59, 130, 246, 0.2);
+          background: var(--blue);
+          color: white;
+          width: 100%;
+        }
+
+        .run-button:hover:enabled,
+        .ghost-inline:hover {
+          transform: translateY(-1px);
         }
 
         .run-button:disabled {
-          opacity: 0.65;
-        }
-
-        .ghost-link,
-        .ghost-inline {
-          background: rgba(17, 20, 35, 0.72);
+          opacity: 0.68;
         }
 
         .status-copy,
         .status-error,
         .remaining-copy {
-          margin: 14px 0 0;
-          font-family: var(--mono);
-          font-size: 11px;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
+          margin: 0;
+          color: var(--muted);
+          font-family: var(--body);
+          font-size: 12px;
+          letter-spacing: 0;
+          text-transform: none;
         }
 
         .status-copy,
         .remaining-copy {
-          color: var(--muted);
+          color: var(--subtle, #475569);
+          text-align: center;
         }
 
         .status-error {
-          color: var(--amber);
+          color: var(--red);
+          text-align: center;
         }
 
-        .config-card {
-          margin-top: 18px;
-          padding: 14px;
-        }
-
-        .config-card pre,
-        .output-card pre {
-          margin: 12px 0 0;
-          overflow: auto;
-          font-family: var(--mono);
-          font-size: 12px;
-          line-height: 1.7;
-          white-space: pre-wrap;
-          color: var(--text);
+        .status-error,
+        .status-copy {
+          margin-top: 10px;
         }
 
         .decision-chip {
           margin: 0;
-          padding: 8px 10px;
+          border-radius: 999px;
+          padding: 8px 12px;
           font-family: var(--mono);
           font-size: 11px;
           letter-spacing: 0.08em;
@@ -585,14 +522,14 @@ evals:
         }
 
         .decision-chip-pass {
-          border: 1px solid rgba(34, 197, 94, 0.36);
-          background: rgba(34, 197, 94, 0.12);
+          border: 1px solid rgba(16, 185, 129, 0.28);
+          background: var(--green-dim);
           color: var(--green);
         }
 
         .decision-chip-blocked {
-          border: 1px solid rgba(239, 68, 68, 0.36);
-          background: rgba(239, 68, 68, 0.12);
+          border: 1px solid rgba(239, 68, 68, 0.28);
+          background: var(--red-dim);
           color: var(--red);
         }
 
@@ -604,6 +541,9 @@ evals:
         }
 
         .result-card {
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          background: var(--surface);
           padding: 14px;
         }
 
@@ -642,8 +582,11 @@ evals:
           grid-template-columns: 130px 1fr auto;
           gap: 10px;
           align-items: center;
-          border-bottom: 1px solid rgba(148, 163, 184, 0.1);
-          padding-bottom: 10px;
+          border: 1px solid var(--border);
+          border-left: 3px solid transparent;
+          border-radius: 12px;
+          background: var(--surface);
+          padding: 12px 14px;
         }
 
         .metric-positive {
@@ -654,17 +597,66 @@ evals:
           color: var(--red);
         }
 
-        .result-empty {
-          display: flex;
-          min-height: 100%;
-          flex-direction: column;
-          justify-content: center;
+        .metric-row-positive {
+          border-left-color: var(--green);
         }
 
-        .result-empty p:last-child {
-          max-width: 520px;
-          line-height: 1.7;
+        .metric-row-negative {
+          border-left-color: var(--red);
+        }
+
+        .note-card {
+          margin-top: 16px;
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          background: var(--surface);
+          padding: 14px;
+        }
+
+        .note-card strong {
+          display: block;
+          font-size: 16px;
+        }
+
+        .note-card span {
+          margin-top: 8px;
+          display: block;
           color: var(--muted);
+          line-height: 1.6;
+        }
+
+        .result-actions {
+          margin-top: 18px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .ghost-inline {
+          border: 1px solid var(--border);
+          background: transparent;
+          color: var(--text);
+        }
+
+        .result-empty {
+          display: flex;
+          min-height: 280px;
+          justify-content: center;
+          align-items: center;
+          border: 1px dashed var(--border);
+          border-radius: 12px;
+          padding: 48px 24px;
+          text-align: center;
+        }
+
+        .result-empty p {
+          margin: 0;
+          max-width: 420px;
+          color: var(--muted);
+          font-family: var(--body);
+          font-size: 15px;
+          line-height: 1.7;
         }
 
         .output-grid {
@@ -675,6 +667,9 @@ evals:
         }
 
         .output-card {
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          background: var(--surface);
           padding: 14px;
         }
 
@@ -687,7 +682,17 @@ evals:
           color: var(--muted);
         }
 
-        @media (max-width: 1040px) {
+        .output-card pre {
+          margin: 12px 0 0;
+          overflow: auto;
+          font-family: var(--mono);
+          font-size: 12px;
+          line-height: 1.7;
+          white-space: pre-wrap;
+          color: var(--text);
+        }
+
+        @media (max-width: 960px) {
           .playground-grid {
             grid-template-columns: 1fr;
           }
