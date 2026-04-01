@@ -1,0 +1,1 @@
+This demo shows behavioral contracts catching unsafe or low-confidence agent behavior before deployment. The clinical triage domain is only illustrative; the same pattern works for any agent where you want to enforce output boundaries, confidence floors, or other deployment rules. Run it locally with `npx agentura run --local` from this directory.

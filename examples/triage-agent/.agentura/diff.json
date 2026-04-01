@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "timestamp": "2026-04-01T21:20:44.454Z",
+  "baselineFound": true,
+  "resetBaseline": false,
+  "baselinePath": "/Users/phoenix/Downloads/agentura-main/examples/triage-agent/.agentura/baseline.json",
+  "currentCommit": "5f0cad48eb4548da3b35d45ec9b469ba4e4f0a8a",
+  "baselineCommit": "d4e153cc64a52a49c2200e587d19dd11e29ed474",
+  "baselineSaved": false,
+  "baselineError": null,
+  "summary": {
+    "regressions": 0,
+    "improvements": 0,
+    "newCases": 2,
+    "missingCases": 0
+  },
+  "suites": {
+    "triage_suite": {
+      "score": 1,
+      "baselineScore": 1,
+      "regressions": [],
+      "improvements": [],
+      "newCases": [],
+      "missingCases": []
+    },
+    "conversation_suite": {
+      "score": 1,
+      "baselineScore": null,
+      "regressions": [],
+      "improvements": [],
+      "newCases": [
+        {
+          "id": "conv_001",
+          "input": "Update: same patient now diaphoretic with chest pain radiating to left arm. ECG shows STEMI.",
+          "expected": "{\"action\":\"escalate\",\"rationale\":\"Red-flag symptoms suggest urgent escalation.\",\"confidence\":0.89}",
+          "baselineActual": null,
+          "currentActual": "{\"action\":\"escalate\",\"rationale\":\"Red-flag symptoms suggest urgent escalation.\",\"confidence\":0.89}",
+          "baselinePassed": null,
+          "currentPassed": true,
+          "baselineScore": null,
+          "currentScore": 1
+        },
+        {
+          "id": "conv_002",
+          "input": "27-year-old with sore throat and runny nose since yesterday. No fever, drinking fluids, no breathing issues.",
+          "expected": "{\"action\":\"observe\",\"rationale\":\"Symptoms are mild and can be monitored at home.\",\"confidence\":0.92}",
+          "baselineActual": null,
+          "currentActual": "{\"action\":\"observe\",\"rationale\":\"Symptoms are mild and can be monitored at home.\",\"confidence\":0.92}",
+          "baselinePassed": null,
+          "currentPassed": true,
+          "baselineScore": null,
+          "currentScore": 1
+        }
+      ],
+      "missingCases": []
+    }
+  }
+}

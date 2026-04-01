@@ -519,6 +519,36 @@ Milestone 2 — implement Prisma schema models, DB exports, and initial migratio
 - Prisma engine download is blocked by restricted network access in this environment, and the default Prisma cache path in `~/.cache/prisma` is not writable in the sandbox.
 - `DATABASE_URL` and `DIRECT_URL` are unset, so Prisma migration/status/studio commands cannot connect to Supabase yet.
 
+## Session — 2026-04-01 20:17 UTC
+
+**Milestone:** 11 — CLI: init + run Commands
+**Status:** IN PROGRESS
+
+**Files created:**
+- `examples/triage-agent/README.md` — added a short explainer for the behavioral-contract demo and local run command
+
+**Files modified:**
+- `examples/triage-agent/evals/triage.jsonl` — replaced all 15 synthetic `Case ID` prompts with short natural-language triage handoff notes while preserving ids, expected outputs, and confidence values
+- `examples/triage-agent/evals/conversation.jsonl` — updated the conversation fixture to the same natural-language style so the full verbose demo stays coherent
+- `examples/triage-agent/agent.js` — switched the demo agent from case-id parsing to ordered input matching loaded from `triage.jsonl`, with lightweight conversation follow-up handling
+- `docs/Documentation.md` — appended this session summary
+
+**Decisions made:**
+- Loaded triage inputs from the dataset file and matched responses by array index so the demo prompt text can read naturally without changing the deterministic contract behavior.
+
+**Validation results:**
+- `cd examples/triage-agent && npx agentura run --local --verbose`: PASS (natural-language prompts verified, `clinical_action_boundary` hard-failed on `triage_003`, and `confidence_floor` escalated `triage_007`, `triage_011`, and `triage_014`; exit code 1 as expected for the blocking contract)
+- `rg -n "Case ID:" examples/triage-agent/evals`: PASS
+- `pnpm build`: PASS
+- `pnpm test`: PASS
+- `pnpm type-check`: PASS
+
+**Issues found:**
+- Running the local demo regenerates untracked example state under `examples/triage-agent/.agentura/`.
+
+**Next session:**
+Wait for human approval, then commit only the triage demo input refresh with the requested commit message after cleaning or ignoring the regenerated local example artifacts.
+
 **Next session:**
 Milestone 2 — run Prisma generate/migrate/status/studio after setting `DATABASE_URL` + `DIRECT_URL` and enabling network access for Prisma engine download (or using an already-cached engine)
 
