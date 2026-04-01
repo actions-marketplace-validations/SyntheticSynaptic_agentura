@@ -16,6 +16,7 @@ import type { TraceFlag } from "./trace-flags";
 const DEFAULT_AGREEMENT_THRESHOLD = 0.8;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_TOKENS = 1_024;
+const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
 
 interface AnthropicMessageResponse {
   content?: Array<{
@@ -94,7 +95,19 @@ function getProviderApiKey(
     return env.OPENAI_API_KEY?.trim() || null;
   }
 
-  return env.GEMINI_API_KEY?.trim() || env.GOOGLE_API_KEY?.trim() || null;
+  if (provider === "groq") {
+    return env.GROQ_API_KEY?.trim() || null;
+  }
+
+  if (provider === "google" || provider === "gemini") {
+    return env.GEMINI_API_KEY?.trim() || env.GOOGLE_API_KEY?.trim() || null;
+  }
+
+  return null;
+}
+
+function getOllamaBaseUrl(env: Record<string, string | undefined>): string {
+  return env.OLLAMA_BASE_URL?.trim().replace(/\/+$/, "") || DEFAULT_OLLAMA_BASE_URL;
 }
 
 function extractAnthropicText(response: AnthropicMessageResponse): string | null {
@@ -357,6 +370,160 @@ async function callGoogleModel(
   }
 }
 
+async function callGroqModel(
+  input: string,
+  model: ConsensusModelConfig,
+  context: ConsensusCallContext
+): Promise<ModelResponse> {
+  const apiKey = getProviderApiKey(model.provider, context.env);
+  if (!apiKey) {
+    return {
+      provider: model.provider,
+      model: model.model,
+      response: null,
+      latency_ms: 0,
+      error: "Missing GROQ_API_KEY",
+    };
+  }
+
+  const startedAt = Date.now();
+  const timeout = createTimeoutController(context.timeoutMs);
+
+  try {
+    const response = await context.fetchImpl("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: model.model,
+        temperature: 0,
+        max_tokens: context.maxTokens,
+        messages: [
+          ...(context.systemPrompt
+            ? [{ role: "system" as const, content: context.systemPrompt }]
+            : []),
+          { role: "user" as const, content: input },
+        ],
+      }),
+      signal: timeout.controller.signal,
+    });
+
+    if (!response.ok) {
+      const responseText = await response.text();
+      return {
+        provider: model.provider,
+        model: model.model,
+        response: null,
+        latency_ms: Math.max(0, Date.now() - startedAt),
+        error: `Groq request failed: ${response.status} ${response.statusText} ${responseText}`.trim(),
+      };
+    }
+
+    const payload = (await response.json()) as OpenAICompletionResponse;
+    return {
+      provider: model.provider,
+      model: model.model,
+      response: extractOpenAIText(payload),
+      latency_ms: Math.max(0, Date.now() - startedAt),
+    };
+  } catch (error) {
+    return {
+      provider: model.provider,
+      model: model.model,
+      response: null,
+      latency_ms: Math.max(0, Date.now() - startedAt),
+      error: error instanceof Error ? error.message : "Unknown Groq error",
+    };
+  } finally {
+    timeout.dispose();
+  }
+}
+
+async function callOllamaModel(
+  input: string,
+  model: ConsensusModelConfig,
+  context: ConsensusCallContext
+): Promise<ModelResponse> {
+  const startedAt = Date.now();
+  const baseUrl = getOllamaBaseUrl(context.env);
+  const timeout = createTimeoutController(context.timeoutMs);
+
+  try {
+    const availabilityResponse = await context.fetchImpl(`${baseUrl}/api/tags`, {
+      method: "GET",
+      signal: timeout.controller.signal,
+    });
+
+    if (availabilityResponse.status !== 200) {
+      return {
+        provider: model.provider,
+        model: model.model,
+        response: null,
+        latency_ms: 0,
+        error: "Ollama is not running. Start it with: ollama serve",
+      };
+    }
+
+    const response = await context.fetchImpl(`${baseUrl}/api/chat`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: model.model,
+        messages: [
+          ...(context.systemPrompt
+            ? [{ role: "system" as const, content: context.systemPrompt }]
+            : []),
+          { role: "user" as const, content: input },
+        ],
+        stream: false,
+        options: {
+          temperature: 0,
+          num_predict: context.maxTokens,
+        },
+      }),
+      signal: timeout.controller.signal,
+    });
+
+    if (!response.ok) {
+      const responseText = await response.text();
+      return {
+        provider: model.provider,
+        model: model.model,
+        response: null,
+        latency_ms: Math.max(0, Date.now() - startedAt),
+        error: `Ollama request failed: ${response.status} ${response.statusText} ${responseText}`.trim(),
+      };
+    }
+
+    const payload = (await response.json()) as {
+      message?: {
+        content?: string;
+      };
+    };
+
+    return {
+      provider: model.provider,
+      model: model.model,
+      response: payload.message?.content?.trim() || null,
+      latency_ms: Math.max(0, Date.now() - startedAt),
+    };
+  } catch (error) {
+    return {
+      provider: model.provider,
+      model: model.model,
+      response: null,
+      latency_ms: 0,
+      error: "Ollama is not running. Start it with: ollama serve",
+    };
+  } finally {
+    timeout.dispose();
+  }
+}
+
 async function defaultCallModel(
   input: string,
   model: ConsensusModelConfig,
@@ -368,6 +535,14 @@ async function defaultCallModel(
 
   if (model.provider === "openai") {
     return callOpenAIModel(input, model, context);
+  }
+
+  if (model.provider === "groq") {
+    return callGroqModel(input, model, context);
+  }
+
+  if (model.provider === "ollama") {
+    return callOllamaModel(input, model, context);
   }
 
   return callGoogleModel(input, model, context);
@@ -505,7 +680,14 @@ export function parseConsensusModelSpecifier(specifier: string): ConsensusModelC
     );
   }
 
-  if (provider !== "anthropic" && provider !== "openai" && provider !== "google" && provider !== "gemini") {
+  if (
+    provider !== "anthropic" &&
+    provider !== "openai" &&
+    provider !== "google" &&
+    provider !== "gemini" &&
+    provider !== "groq" &&
+    provider !== "ollama"
+  ) {
     throw new Error(`Unsupported consensus provider "${provider}".`);
   }
 

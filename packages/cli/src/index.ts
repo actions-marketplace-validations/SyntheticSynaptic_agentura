@@ -41,8 +41,8 @@ program
 program
   .command("consensus")
   .description("Run a heterogeneous model consensus check for a single input")
-  .requiredOption("--input <text>", "Input to send to the model set")
-  .requiredOption(
+  .option("--input <text>", "Input to send to the model set")
+  .option(
     "--models <list>",
     "Comma-separated provider:model list, for example anthropic:claude-sonnet-4-6,openai:gpt-4o"
   )

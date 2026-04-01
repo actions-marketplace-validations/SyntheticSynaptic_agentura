@@ -322,7 +322,7 @@ const toolUseSuiteSchema = z.object({
 
 const consensusModelEntrySchema = z.union([
   z.object({
-    provider: z.enum(["anthropic", "openai", "google", "gemini"]),
+    provider: z.enum(["anthropic", "openai", "google", "gemini", "groq", "ollama"]),
     model: z.string().min(1),
   }),
   z.string().min(1),

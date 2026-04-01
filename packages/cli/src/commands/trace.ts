@@ -2,6 +2,8 @@ import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
+import { createInterface } from "node:readline/promises";
+import { stdin as input, stdout as output } from "node:process";
 import { pathToFileURL } from "node:url";
 
 import chalk from "chalk";
@@ -39,6 +41,8 @@ interface ModuleMetadata {
 interface TraceManifestShape {
   run_id?: string;
 }
+
+type PromptFunction = (question: string) => Promise<string>;
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown trace error";
@@ -145,19 +149,49 @@ function diffToolCalls(left: ToolCallRecord[], right: ToolCallRecord[]) {
   return { added, removed, changed };
 }
 
+async function promptForMissingTraceValues(
+  options: TraceCommandOptions,
+  ask: PromptFunction
+): Promise<{ agentPath: string; inputText: string }> {
+  let agentPath = options.agent?.trim() || "";
+  if (!agentPath) {
+    agentPath = (await ask("Path to agent module: ")).trim();
+  }
+
+  let inputText = options.input?.trim() || "";
+  if (!inputText) {
+    inputText = (await ask("Input to send to agent: ")).trim();
+  }
+
+  return { agentPath, inputText };
+}
+
 export async function traceCommand(options: TraceCommandOptions): Promise<void> {
   const cwd = process.cwd();
-  if (!options.agent) {
+  const rl = createInterface({ input, output });
+  let agentPath = "";
+  let inputText = "";
+
+  try {
+    ({ agentPath, inputText } = await promptForMissingTraceValues(
+      options,
+      (question) => rl.question(question)
+    ));
+  } finally {
+    rl.close();
+  }
+
+  if (!agentPath) {
     throw new Error("trace requires --agent <path>");
   }
 
-  if (typeof options.input !== "string") {
+  if (!inputText) {
     throw new Error("trace requires --input <text>");
   }
 
   const traceOutDir = options.out ?? ".agentura/traces";
   const runId = await readExistingRunId(cwd);
-  const moduleMetadata = await loadTraceModule(options.agent, cwd);
+  const moduleMetadata = await loadTraceModule(agentPath, cwd);
   const startedAt = new Date().toISOString();
   const invocationStartedAt = performance.now();
 
@@ -172,7 +206,7 @@ export async function traceCommand(options: TraceCommandOptions): Promise<void> 
       ...(options.model ? { model: options.model } : {}),
     };
     const result = (await moduleMetadata.agentFn(
-      options.input,
+      inputText,
       agentOptions
     )) as AgentCallResult;
     const completedAt = new Date().toISOString();
@@ -180,7 +214,7 @@ export async function traceCommand(options: TraceCommandOptions): Promise<void> 
     trace = buildAgentTrace({
       runId,
       agentId: moduleMetadata.agentId,
-      input: options.input,
+      input: inputText,
       output: result.output,
       agentResult: result,
       model: options.model ?? result.model ?? moduleMetadata.model,
@@ -200,7 +234,7 @@ export async function traceCommand(options: TraceCommandOptions): Promise<void> 
     trace = buildAgentTrace({
       runId,
       agentId: moduleMetadata.agentId,
-      input: options.input,
+      input: inputText,
       output: "",
       model: options.model ?? moduleMetadata.model,
       modelVersion: moduleMetadata.modelVersion,
@@ -281,3 +315,7 @@ export async function traceDiffCommand(traceIdA: string, traceIdB: string): Prom
     );
   }
 }
+
+export const __testing = {
+  promptForMissingTraceValues,
+};

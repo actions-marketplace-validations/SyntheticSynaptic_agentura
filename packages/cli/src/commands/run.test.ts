@@ -2288,6 +2288,247 @@ test("consensus command parser normalizes provider aliases and validates thresho
   assert.throws(() => consensusCommandTesting.parseThreshold("1.2"));
 });
 
+test("consensus command parser accepts groq and ollama providers", () => {
+  assert.deepEqual(
+    consensusCommandTesting.parseModelsOption(
+      "groq:llama-3.3-70b-versatile,ollama:nemotron-3-nano"
+    ),
+    [
+      { provider: "groq", model: "llama-3.3-70b-versatile" },
+      { provider: "ollama", model: "nemotron-3-nano" },
+    ]
+  );
+});
+
+test("runConsensus returns a structured error when GROQ_API_KEY is missing", async () => {
+  const result = await runConsensus(
+    "What should happen next?",
+    [{ provider: "groq", model: "llama-3.3-70b-versatile" }],
+    {
+      env: {},
+      fetchImpl: async () => {
+        throw new Error("fetch should not be called");
+      },
+      similarityScorer: async () => 1,
+    }
+  );
+
+  assert.deepEqual(result.responses, [
+    {
+      provider: "groq",
+      model: "llama-3.3-70b-versatile",
+      response: null,
+      latency_ms: 0,
+      error: "Missing GROQ_API_KEY",
+    },
+  ]);
+  assert.equal(result.winning_response, "");
+  assert.equal(result.agreement_rate, 0);
+});
+
+test("runConsensus returns a structured error when GEMINI_API_KEY is missing", async () => {
+  const result = await runConsensus(
+    "What should happen next?",
+    [{ provider: "gemini", model: "gemini-2.0-flash" }],
+    {
+      env: {},
+      fetchImpl: async () => {
+        throw new Error("fetch should not be called");
+      },
+      similarityScorer: async () => 1,
+    }
+  );
+
+  assert.deepEqual(result.responses, [
+    {
+      provider: "gemini",
+      model: "gemini-2.0-flash",
+      response: null,
+      latency_ms: 0,
+      error: "Missing GEMINI_API_KEY",
+    },
+  ]);
+  assert.equal(result.winning_response, "");
+  assert.equal(result.agreement_rate, 0);
+});
+
+test("runConsensus parses Gemini responses from candidates[0].content.parts[0].text", async () => {
+  const result = await runConsensus(
+    "Patient presents with chest pain.",
+    [{ provider: "gemini", model: "gemini-2.0-flash" }],
+    {
+      env: { GEMINI_API_KEY: "test-key" },
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [{ text: "Escalate to emergency evaluation immediately." }],
+                },
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        ),
+      similarityScorer: async () => 1,
+    }
+  );
+
+  assert.equal(
+    result.responses[0]?.response,
+    "Escalate to emergency evaluation immediately."
+  );
+});
+
+test("runConsensus returns a structured error when Ollama is unreachable", async () => {
+  const result = await runConsensus(
+    "Patient presents with chest pain.",
+    [{ provider: "ollama", model: "nemotron-3-nano" }],
+    {
+      env: { OLLAMA_BASE_URL: "http://localhost:11434" },
+      fetchImpl: async () =>
+        new Response("service unavailable", {
+          status: 503,
+          statusText: "Service Unavailable",
+        }),
+      similarityScorer: async () => 1,
+    }
+  );
+
+  assert.deepEqual(result.responses, [
+    {
+      provider: "ollama",
+      model: "nemotron-3-nano",
+      response: null,
+      latency_ms: 0,
+      error: "Ollama is not running. Start it with: ollama serve",
+    },
+  ]);
+});
+
+test("runConsensus parses Ollama responses from response.message.content", async () => {
+  const requests: string[] = [];
+  const result = await runConsensus(
+    "Patient presents with chest pain.",
+    [{ provider: "ollama", model: "ZimaBlueAI/HuatuoGPT-o1-8B" }],
+    {
+      env: { OLLAMA_BASE_URL: "http://localhost:11434" },
+      fetchImpl: async (input) => {
+        requests.push(String(input));
+
+        if (String(input).endsWith("/api/tags")) {
+          return new Response(JSON.stringify({ models: [{ name: "nemotron-3-nano" }] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        return new Response(
+          JSON.stringify({
+            message: {
+              content: "Escalate to emergency evaluation immediately.",
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      },
+      similarityScorer: async () => 1,
+    }
+  );
+
+  assert.ok(requests.some((request) => request.endsWith("/api/tags")));
+  assert.ok(requests.some((request) => request.endsWith("/api/chat")));
+  assert.equal(
+    result.responses[0]?.response,
+    "Escalate to emergency evaluation immediately."
+  );
+});
+
+test("runConsensus captures per-model errors and still returns successful responses", async () => {
+  const result = await runConsensus(
+    "Patient presents with chest pain.",
+    [
+      { provider: "groq", model: "llama-3.3-70b-versatile" },
+      { provider: "gemini", model: "gemini-2.0-flash" },
+      { provider: "ollama", model: "nemotron-3-nano" },
+    ],
+    {
+      env: {
+        GEMINI_API_KEY: "test-key",
+        OLLAMA_BASE_URL: "http://localhost:11434",
+      },
+      fetchImpl: async (input) => {
+        if (String(input).includes("generativelanguage.googleapis.com")) {
+          return new Response(
+            JSON.stringify({
+              candidates: [
+                {
+                  content: {
+                    parts: [{ text: "Escalate to emergency evaluation immediately." }],
+                  },
+                },
+              ],
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }
+          );
+        }
+
+        return new Response("offline", {
+          status: 503,
+          statusText: "Service Unavailable",
+        });
+      },
+      similarityScorer: async () => 1,
+    }
+  );
+
+  assert.equal(
+    result.winning_response,
+    "Escalate to emergency evaluation immediately."
+  );
+  assert.deepEqual(
+    result.responses.map((response) => response.error ?? null),
+    [
+      "Missing GROQ_API_KEY",
+      null,
+      "Ollama is not running. Start it with: ollama serve",
+    ]
+  );
+});
+
+test("consensus exits 1 with an actionable message when GROQ_API_KEY is missing", async () => {
+  const directory = await createFixtureDir("agentura-consensus-groq-key-");
+  const result = await runCli(
+    directory,
+    [
+      "consensus",
+      "--input",
+      "test",
+      "--models",
+      "groq:llama-3.3-70b-versatile",
+    ],
+    {
+      GROQ_API_KEY: null,
+    }
+  );
+
+  assert.equal(result.code, 1);
+  assert.match(
+    stripAnsi(result.output),
+    /Missing GROQ_API_KEY — set it with: export GROQ_API_KEY=your_key/
+  );
+});
+
 test("runConsensus uses majority selection and marks dissenting models below threshold", async () => {
   const result = await runConsensus(
     "What is the recommended next step for this patient?",

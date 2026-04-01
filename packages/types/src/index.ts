@@ -21,7 +21,13 @@ export interface DriftConfig {
   thresholds: DriftThresholdConfig;
 }
 
-export type ConsensusProvider = "anthropic" | "openai" | "google";
+export type ConsensusProvider =
+  | "anthropic"
+  | "openai"
+  | "google"
+  | "gemini"
+  | "groq"
+  | "ollama";
 
 export interface ConsensusModelConfig {
   provider: ConsensusProvider;

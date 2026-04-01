@@ -1,6 +1,8 @@
 import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { createInterface } from "node:readline/promises";
+import { stdin as input, stdout as output } from "node:process";
 
 import chalk from "chalk";
 import {
@@ -12,6 +14,7 @@ import {
   writeTrace,
   type AgentTrace,
 } from "@agentura/core";
+import type { ConsensusModelConfig } from "@agentura/types";
 
 interface ConsensusCommandOptions {
   input?: string;
@@ -24,6 +27,8 @@ interface ConsensusCommandOptions {
 interface TraceManifestShape {
   run_id?: string;
 }
+
+type PromptFunction = (question: string) => Promise<string>;
 
 function quote(value: string): string {
   return JSON.stringify(value);
@@ -75,6 +80,64 @@ function parseModelsOption(value: string | undefined) {
       .map((entry) => entry.trim())
       .filter((entry) => entry.length > 0)
   );
+}
+
+function getMissingApiKeyMessage(
+  model: ConsensusModelConfig,
+  env: Record<string, string | undefined>
+): string | null {
+  if (model.provider === "anthropic" && !env.ANTHROPIC_API_KEY?.trim()) {
+    return "Missing ANTHROPIC_API_KEY — set it with: export ANTHROPIC_API_KEY=your_key";
+  }
+
+  if (model.provider === "openai" && !env.OPENAI_API_KEY?.trim()) {
+    return "Missing OPENAI_API_KEY — set it with: export OPENAI_API_KEY=your_key";
+  }
+
+  if ((model.provider === "google" || model.provider === "gemini") &&
+      !env.GEMINI_API_KEY?.trim() &&
+      !env.GOOGLE_API_KEY?.trim()) {
+    return "Missing GEMINI_API_KEY — set it with: export GEMINI_API_KEY=your_key";
+  }
+
+  if (model.provider === "groq" && !env.GROQ_API_KEY?.trim()) {
+    return "Missing GROQ_API_KEY — set it with: export GROQ_API_KEY=your_key";
+  }
+
+  return null;
+}
+
+function findMissingConsensusApiKeyMessage(
+  models: ConsensusModelConfig[],
+  env: Record<string, string | undefined>
+): string | null {
+  for (const model of models) {
+    const message = getMissingApiKeyMessage(model, env);
+    if (message) {
+      return message;
+    }
+  }
+
+  return null;
+}
+
+async function promptForMissingConsensusValues(
+  options: ConsensusCommandOptions,
+  ask: PromptFunction
+): Promise<{ inputText: string; modelsText: string }> {
+  let inputText = options.input?.trim() || "";
+  if (!inputText) {
+    inputText = (await ask("Input text: ")).trim();
+  }
+
+  let modelsText = options.models?.trim() || "";
+  if (!modelsText) {
+    modelsText = (
+      await ask("Models (e.g. groq:llama-3.3-70b-versatile,ollama:llama3.2): ")
+    ).trim();
+  }
+
+  return { inputText, modelsText };
 }
 
 function buildConsensusTrace(
@@ -139,18 +202,38 @@ function printConsensusResult(
 }
 
 export async function consensusCommand(options: ConsensusCommandOptions): Promise<void> {
-  if (typeof options.input !== "string" || options.input.length === 0) {
+  const rl = createInterface({ input, output });
+  let inputText = "";
+  let modelsText = "";
+
+  try {
+    ({ inputText, modelsText } = await promptForMissingConsensusValues(
+      options,
+      (question) => rl.question(question)
+    ));
+  } finally {
+    rl.close();
+  }
+
+  if (!inputText) {
     throw new Error("consensus requires --input <text>");
   }
 
   const threshold = parseThreshold(options.threshold);
-  const models = parseModelsOption(options.models);
+  const models = parseModelsOption(modelsText);
+  const missingApiKeyMessage = findMissingConsensusApiKeyMessage(models, process.env);
+  if (missingApiKeyMessage) {
+    console.error(chalk.red(missingApiKeyMessage));
+    process.exit(1);
+    return;
+  }
+
   const cwd = process.cwd();
   const runId = await readExistingRunId(cwd);
-  const result = await runConsensus(options.input, models, {
+  const result = await runConsensus(inputText, models, {
     agreementThreshold: threshold,
   });
-  const trace = buildConsensusTrace(runId, options.input, threshold, result);
+  const trace = buildConsensusTrace(runId, inputText, threshold, result);
   const tracePath = await appendTrace(cwd, options.out ?? ".agentura/traces", trace);
 
   printConsensusResult(threshold, result);
@@ -176,6 +259,8 @@ async function appendTrace(cwd: string, outDir: string, trace: AgentTrace): Prom
 }
 
 export const __testing = {
+  findMissingConsensusApiKeyMessage,
   parseModelsOption,
   parseThreshold,
+  promptForMissingConsensusValues,
 };
