@@ -13,9 +13,9 @@ import type { AgentFunction, ConsensusResult, DriftThresholdConfig } from "@agen
 
 import {
   DEFAULT_DRIFT_THRESHOLDS,
+  type DriftComparisonResult,
   diffAgainstReference,
   readDriftHistory,
-  type DriftComparisonResult,
 } from "./reference";
 
 const EVAL_RUN_ROOT = path.join(".agentura", "eval-runs");
@@ -116,17 +116,57 @@ interface ReportSummary {
   consensusAgreementRate: number | null;
 }
 
+export type ClinicalAuditReportFormat = "html" | "md";
+
 interface RenderClinicalAuditReportOptions {
   cwd: string;
   since: string;
-  reference: string;
+  reference: string | null;
   outPath: string;
+  format: ClinicalAuditReportFormat;
   agentFn?: AgentFunction;
 }
 
 interface ClinicalAuditReportResult {
   outputPath: string;
   summary: ReportSummary;
+}
+
+interface ReportConfigHints {
+  driftThresholds: DriftThresholdConfig;
+  driftReference: string | null;
+  contractsConfigured: boolean;
+}
+
+interface StoredDiffReport {
+  timestamp?: string;
+  baselineFound?: boolean;
+  summary?: {
+    regressions?: number;
+    improvements?: number;
+    newCases?: number;
+    missingCases?: number;
+  };
+}
+
+type ReadinessStatus = "PASS" | "WARN" | "FAIL";
+
+interface PccpReadinessSignal {
+  name: string;
+  status: ReadinessStatus;
+  explanation: string;
+}
+
+interface DriftComputation {
+  current: DriftComparisonResult | null;
+  history: DriftComparisonResult[];
+  error: string | null;
+}
+
+interface ResolvedClinicalAuditReportOptions {
+  since: string;
+  reference: string | null;
+  format: ClinicalAuditReportFormat;
 }
 
 function isPiiKey(key: string): boolean {
@@ -140,6 +180,15 @@ function readDate(value: string): number {
   }
 
   return timestamp;
+}
+
+function tryReadDate(value: string | null | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : timestamp;
 }
 
 async function ensureDirectory(directoryPath: string): Promise<void> {
@@ -181,6 +230,130 @@ async function walkJsonFiles(directory: string): Promise<string[]> {
   );
 
   return files.flat();
+}
+
+async function listReferenceLabels(cwd: string): Promise<string[]> {
+  const referenceRoot = path.join(cwd, ".agentura", "reference");
+  let entries;
+
+  try {
+    entries = await fs.readdir(referenceRoot, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return [];
+    }
+
+    throw error;
+  }
+
+  return entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+}
+
+async function loadReportConfigHints(cwd: string): Promise<ReportConfigHints> {
+  try {
+    const raw = await fs.readFile(path.join(cwd, "agentura.yaml"), "utf-8");
+    const parsed = yaml.load(raw) as {
+      contracts?: unknown;
+      drift?: {
+        reference?: unknown;
+        thresholds?: Partial<DriftThresholdConfig>;
+      };
+    } | null;
+
+    return {
+      driftThresholds: {
+        semantic_drift:
+          typeof parsed?.drift?.thresholds?.semantic_drift === "number"
+            ? parsed.drift.thresholds.semantic_drift
+            : DEFAULT_DRIFT_THRESHOLDS.semantic_drift,
+        tool_call_drift:
+          typeof parsed?.drift?.thresholds?.tool_call_drift === "number"
+            ? parsed.drift.thresholds.tool_call_drift
+            : DEFAULT_DRIFT_THRESHOLDS.tool_call_drift,
+        latency_drift_ms:
+          typeof parsed?.drift?.thresholds?.latency_drift_ms === "number"
+            ? parsed.drift.thresholds.latency_drift_ms
+            : DEFAULT_DRIFT_THRESHOLDS.latency_drift_ms,
+      },
+      driftReference:
+        typeof parsed?.drift?.reference === "string" && parsed.drift.reference.length > 0
+          ? parsed.drift.reference
+          : null,
+      contractsConfigured: Array.isArray(parsed?.contracts) && parsed.contracts.length > 0,
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return {
+        driftThresholds: DEFAULT_DRIFT_THRESHOLDS,
+        driftReference: null,
+        contractsConfigured: false,
+      };
+    }
+
+    throw error;
+  }
+}
+
+async function inferDefaultSince(cwd: string): Promise<string> {
+  const evalFiles = await walkJsonFiles(path.join(cwd, ".agentura", "eval-runs"));
+  const timestamps = await Promise.all(
+    evalFiles.map(async (filePath) => {
+      try {
+        const record = await readJsonFile<{ timestamp?: string }>(filePath);
+        return tryReadDate(record.timestamp);
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  const valid = timestamps.filter((value): value is number => value !== null);
+  if (valid.length === 0) {
+    return formatDate(new Date().toISOString());
+  }
+
+  return formatDate(new Date(Math.min(...valid)).toISOString());
+}
+
+function normalizeReportFormat(value: string | undefined): ClinicalAuditReportFormat {
+  if (!value || value === "html") {
+    return "html";
+  }
+
+  if (value === "md") {
+    return "md";
+  }
+
+  throw new Error(`report format must be "html" or "md", got: ${value}`);
+}
+
+export async function resolveClinicalAuditReportOptions(options: {
+  cwd: string;
+  since?: string;
+  reference?: string;
+  format?: string;
+}): Promise<ResolvedClinicalAuditReportOptions> {
+  const [configHints, referenceLabels] = await Promise.all([
+    loadReportConfigHints(options.cwd),
+    listReferenceLabels(options.cwd),
+  ]);
+
+  const since = options.since ?? (await inferDefaultSince(options.cwd));
+  readDate(since);
+
+  const reference =
+    options.reference ??
+    configHints.driftReference ??
+    (referenceLabels.length === 1 ? referenceLabels[0] : null);
+
+  return {
+    since,
+    reference,
+    format: normalizeReportFormat(options.format),
+  };
 }
 
 function uniqueStrings(values: Array<string | null | undefined>): string[] {
@@ -395,6 +568,29 @@ async function readTraceFilesSince(agenturaDir: string, since: string): Promise<
   return traces.filter((trace): trace is AuditTraceRecord => trace !== null);
 }
 
+async function readLatestDiffReport(
+  agenturaDir: string,
+  since: string
+): Promise<StoredDiffReport | null> {
+  const filePath = path.join(agenturaDir, "diff.json");
+
+  try {
+    const report = await readJsonFile<StoredDiffReport>(filePath);
+    const timestamp = tryReadDate(report.timestamp);
+    if (timestamp === null || timestamp < readDate(since)) {
+      return null;
+    }
+
+    return report;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
 async function readContractResultsSince(
   agenturaDir: string,
   since: string
@@ -549,9 +745,15 @@ function calculateMean(values: number[]): number | null {
   return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
+function renderStatusBadge(status: ReadinessStatus): string {
+  const className =
+    status === "PASS" ? "ok" : status === "WARN" ? "warn" : "fail";
+  return `<span class="badge ${className}">${status}</span>`;
+}
+
 function renderThresholdBadge(passed: boolean): string {
   const label = passed ? "PASS" : "FAIL";
-  const className = passed ? "ok" : "warn";
+  const className = passed ? "ok" : "fail";
   return `<span class="badge ${className}">${label}</span>`;
 }
 
@@ -672,31 +874,202 @@ function renderTraceSample(trace: AuditTraceRecord): string {
   </article>`;
 }
 
-async function loadConfiguredThresholds(cwd: string): Promise<DriftThresholdConfig> {
-  try {
-    const raw = await fs.readFile(path.join(cwd, "agentura.yaml"), "utf-8");
-    const parsed = yaml.load(raw) as { drift?: { thresholds?: Partial<DriftThresholdConfig> } } | null;
-    return {
-      semantic_drift:
-        typeof parsed?.drift?.thresholds?.semantic_drift === "number"
-          ? parsed.drift.thresholds.semantic_drift
-          : DEFAULT_DRIFT_THRESHOLDS.semantic_drift,
-      tool_call_drift:
-        typeof parsed?.drift?.thresholds?.tool_call_drift === "number"
-          ? parsed.drift.thresholds.tool_call_drift
-          : DEFAULT_DRIFT_THRESHOLDS.tool_call_drift,
-      latency_drift_ms:
-        typeof parsed?.drift?.thresholds?.latency_drift_ms === "number"
-          ? parsed.drift.thresholds.latency_drift_ms
-          : DEFAULT_DRIFT_THRESHOLDS.latency_drift_ms,
-    };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return DEFAULT_DRIFT_THRESHOLDS;
-    }
-
-    throw error;
+function computeDriftEvidence(options: {
+  reference: string | null;
+  referenceLabels: string[];
+  driftHistory: DriftComparisonResult[];
+  driftThresholds: DriftThresholdConfig;
+  agentFn?: AgentFunction;
+  cwd: string;
+}): Promise<DriftComputation> {
+  if (!options.reference) {
+    return Promise.resolve({
+      current: null,
+      history: [],
+      error: "Insufficient data — no reference snapshot configured or discovered locally.",
+    });
   }
+
+  if (!options.referenceLabels.includes(options.reference)) {
+    return Promise.resolve({
+      current: null,
+      history: [],
+      error: `Insufficient data — reference snapshot "${options.reference}" was not found locally.`,
+    });
+  }
+
+  if (!options.agentFn) {
+    return Promise.resolve({
+      current: null,
+      history: [],
+      error: `Insufficient data — unable to invoke the current agent for reference "${options.reference}".`,
+    });
+  }
+
+  return diffAgainstReference({
+    cwd: options.cwd,
+    label: options.reference,
+    thresholds: options.driftThresholds,
+    agentFn: options.agentFn,
+  })
+    .then((current) => ({
+      current,
+      history: options.driftHistory
+        .filter((entry) => entry.reference_label === options.reference)
+        .concat(current),
+      error: null,
+    }))
+    .catch((error) => ({
+      current: null,
+      history: options.driftHistory.filter((entry) => entry.reference_label === options.reference),
+      error: `Insufficient data — ${(error as Error).message}`,
+    }));
+}
+
+function computePccpReadinessSignals(options: {
+  auditRecords: EvalRunAuditRecord[];
+  contractEntries: ContractAuditEntry[];
+  contractsConfigured: boolean;
+  diffReport: StoredDiffReport | null;
+  drift: DriftComputation;
+}): PccpReadinessSignal[] {
+  const uniqueCases = new Set(
+    options.auditRecords.flatMap((record) =>
+      record.traces.map((trace) => `${trace.suite_name}:${trace.case_id}`)
+    )
+  );
+  const modelVersions = uniqueStrings(options.auditRecords.flatMap((record) => record.model_versions));
+  const hardFailCount = options.contractEntries.filter(
+    (entry) => !entry.passed && entry.failure_mode === "hard_fail"
+  ).length;
+  const nonBlockingContractFailures = options.contractEntries.filter(
+    (entry) =>
+      !entry.passed &&
+      (entry.failure_mode === "soft_fail" || entry.failure_mode === "escalation_required")
+  ).length;
+  const regressions = options.diffReport?.summary?.regressions ?? 0;
+
+  const coverageSignal: PccpReadinessSignal =
+    uniqueCases.size > 0
+      ? {
+          name: "Eval coverage",
+          status: "PASS",
+          explanation: `${String(uniqueCases.size)} unique eval case(s) recorded across ${String(options.auditRecords.length)} run(s) in this period.`,
+        }
+      : {
+          name: "Eval coverage",
+          status: "WARN",
+          explanation: "Insufficient data — no local eval audit records were found in this reporting period.",
+        };
+
+  const baselineSignal: PccpReadinessSignal =
+    options.diffReport === null
+      ? {
+          name: "Baseline stability",
+          status: "WARN",
+          explanation: "Insufficient data — no stored baseline diff was found for this reporting period.",
+        }
+      : options.diffReport.baselineFound === false
+        ? {
+            name: "Baseline stability",
+            status: "WARN",
+            explanation: "No stored baseline found locally, so pass→fail flips could not be assessed.",
+          }
+        : regressions > 0
+          ? {
+              name: "Baseline stability",
+              status: "FAIL",
+              explanation: `${String(regressions)} case(s) flipped pass→fail versus the stored baseline.`,
+            }
+          : {
+              name: "Baseline stability",
+              status: "PASS",
+              explanation: "No pass→fail flips were detected versus the stored baseline.",
+            };
+
+  const contractSignal: PccpReadinessSignal =
+    options.contractEntries.length > 0
+      ? hardFailCount > 0
+        ? {
+            name: "Contract enforcement",
+            status: "FAIL",
+            explanation: `Contracts were active and ${String(hardFailCount)} hard_fail event(s) fired in this period.`,
+          }
+        : nonBlockingContractFailures > 0
+          ? {
+              name: "Contract enforcement",
+              status: "WARN",
+              explanation: `Contracts were active; no hard_fail fired, but ${String(nonBlockingContractFailures)} non-blocking contract issue(s) were recorded.`,
+            }
+          : {
+              name: "Contract enforcement",
+              status: "PASS",
+              explanation: "Contracts were active and no contract failures were recorded in this period.",
+            }
+      : options.contractsConfigured
+        ? {
+            name: "Contract enforcement",
+            status: "WARN",
+            explanation: "Insufficient data — contracts are configured, but no contract audit results were recorded in this period.",
+          }
+        : {
+            name: "Contract enforcement",
+            status: "WARN",
+            explanation: "Contracts are not configured in agentura.yaml, so runtime scope enforcement is not active.",
+          };
+
+  const driftSignal: PccpReadinessSignal =
+    options.drift.current !== null
+      ? options.drift.current.threshold_breaches.length > 0
+        ? {
+            name: "Drift status",
+            status: "FAIL",
+            explanation: `Reference "${options.drift.current.reference_label}" exists, but drift thresholds were breached for ${options.drift.current.threshold_breaches.join(", ")}.`,
+          }
+        : {
+            name: "Drift status",
+            status: "PASS",
+            explanation: `Reference "${options.drift.current.reference_label}" exists and no drift thresholds were breached.`,
+          }
+      : {
+          name: "Drift status",
+          status: "WARN",
+          explanation: options.drift.error ?? "Insufficient data — drift status could not be computed.",
+        };
+
+  const modelSignal: PccpReadinessSignal =
+    modelVersions.length === 0
+      ? {
+          name: "Model version consistency",
+          status: "WARN",
+          explanation: "Insufficient data — no model version metadata was recorded in local eval evidence.",
+        }
+      : modelVersions.length === 1
+        ? {
+            name: "Model version consistency",
+            status: "PASS",
+            explanation: `All recorded runs used ${modelVersions[0]}.`,
+          }
+        : {
+            name: "Model version consistency",
+            status: "FAIL",
+            explanation: `${String(modelVersions.length)} model versions were observed in this period: ${modelVersions.join(", ")}.`,
+          };
+
+  return [coverageSignal, baselineSignal, contractSignal, driftSignal, modelSignal];
+}
+
+function renderPccpReadinessSignalsSection(signals: PccpReadinessSignal[]): string {
+  const rows = signals.map((signal) => [
+    escapeHtml(signal.name),
+    renderStatusBadge(signal.status),
+    escapeHtml(signal.explanation),
+  ]);
+
+  return `<section class="panel">
+      <h2>PCCP Readiness Signals</h2>
+      ${renderTable(["Signal", "Status", "Explanation"], rows)}
+    </section>`;
 }
 
 function renderClinicalAuditHtml(options: {
@@ -705,9 +1078,11 @@ function renderClinicalAuditHtml(options: {
   latestRun: EvalRunAuditRecord | null;
   traces: AuditTraceRecord[];
   contractEntries: ContractAuditEntry[];
+  readinessSignals: PccpReadinessSignal[];
   driftThresholds: DriftThresholdConfig;
-  currentDrift: DriftComparisonResult;
+  currentDrift: DriftComparisonResult | null;
   driftTrend: DriftComparisonResult[];
+  driftError: string | null;
   systemTimeline: Array<{
     date: string;
     modelVersions: string[];
@@ -751,33 +1126,39 @@ function renderClinicalAuditHtml(options: {
       formatPercent(suite.pass_rate),
       escapeHtml(formatDelta(suite.baseline_delta)),
     ]) ?? [];
-  const driftRows = [
-    [
-      "semantic_drift",
-      options.currentDrift.semantic_drift.toFixed(2),
-      options.currentDrift.semantic_drift >= options.driftThresholds.semantic_drift
-        ? renderThresholdBadge(true)
-        : renderThresholdBadge(false),
-    ],
-    [
-      "tool_call_drift",
-      options.currentDrift.tool_call_drift.toFixed(2),
-      options.currentDrift.tool_call_drift >= options.driftThresholds.tool_call_drift
-        ? renderThresholdBadge(true)
-        : renderThresholdBadge(false),
-    ],
-    [
-      "latency_drift_ms",
-      escapeHtml(formatLatencyDelta(options.currentDrift.latency_drift_ms)),
-      options.currentDrift.latency_drift_ms <= options.driftThresholds.latency_drift_ms
-        ? renderThresholdBadge(true)
-        : renderThresholdBadge(false),
-    ],
-  ];
-  const toolPatternChanges = [
-    ...(options.currentDrift.tool_patterns_added ?? []).map((pattern) => `Added: ${pattern}`),
-    ...(options.currentDrift.tool_patterns_removed ?? []).map((pattern) => `Removed: ${pattern}`),
-  ];
+  const driftRows =
+    options.currentDrift === null
+      ? []
+      : [
+          [
+            "semantic_drift",
+            options.currentDrift.semantic_drift.toFixed(2),
+            options.currentDrift.semantic_drift >= options.driftThresholds.semantic_drift
+              ? renderThresholdBadge(true)
+              : renderThresholdBadge(false),
+          ],
+          [
+            "tool_call_drift",
+            options.currentDrift.tool_call_drift.toFixed(2),
+            options.currentDrift.tool_call_drift >= options.driftThresholds.tool_call_drift
+              ? renderThresholdBadge(true)
+              : renderThresholdBadge(false),
+          ],
+          [
+            "latency_drift_ms",
+            escapeHtml(formatLatencyDelta(options.currentDrift.latency_drift_ms)),
+            options.currentDrift.latency_drift_ms <= options.driftThresholds.latency_drift_ms
+              ? renderThresholdBadge(true)
+              : renderThresholdBadge(false),
+          ],
+        ];
+  const toolPatternChanges =
+    options.currentDrift === null
+      ? []
+      : [
+          ...(options.currentDrift.tool_patterns_added ?? []).map((pattern) => `Added: ${pattern}`),
+          ...(options.currentDrift.tool_patterns_removed ?? []).map((pattern) => `Removed: ${pattern}`),
+        ];
   const systemRows = options.systemTimeline.map((entry) => [
     escapeHtml(entry.date),
     escapeHtml(entry.modelVersions.join(", ") || "unknown"),
@@ -880,6 +1261,10 @@ function renderClinicalAuditHtml(options: {
         background: rgba(180, 83, 9, 0.12);
         color: var(--warn);
       }
+      .badge.fail {
+        background: rgba(153, 27, 27, 0.12);
+        color: #991b1b;
+      }
       .badge.escalation {
         background: rgba(194, 65, 12, 0.12);
         color: var(--escalation);
@@ -971,8 +1356,12 @@ function renderClinicalAuditHtml(options: {
           },
         ])}
         <div style="margin-top:16px">
-          <strong>Drift vs ${escapeHtml(options.currentDrift.reference_label)}</strong>
-          ${renderTable(["Metric", "Value", "Status"], driftRows)}
+          <strong>Drift status</strong>
+          ${
+            options.currentDrift
+              ? renderTable(["Metric", "Value", "Status"], driftRows)
+              : `<p class="muted">${escapeHtml(options.driftError ?? "Insufficient data — no drift comparison available.")}</p>`
+          }
         </div>
       </section>
 
@@ -1014,38 +1403,44 @@ function renderClinicalAuditHtml(options: {
 
       <section class="panel">
         <h2>Drift Report</h2>
-        <div class="summary-grid">
-          <div class="metric">
-            <div class="metric-label">Semantic drift trend</div>
-            <div class="metric-value">${renderSparkline(options.driftTrend.map((entry) => entry.semantic_drift))}</div>
-          </div>
-          <div class="metric">
-            <div class="metric-label">Tool call pattern changes</div>
-            <div class="metric-value" style="font-size:1rem;font-weight:600">
-              ${
-                toolPatternChanges.length > 0
-                  ? toolPatternChanges
-                      .slice(0, 8)
-                      .map((entry) => `<div>${escapeHtml(entry)}</div>`)
-                      .join("")
-                  : "<span class=\"muted\">No tool call pattern changes detected.</span>"
-              }
-            </div>
-          </div>
-        </div>
-        <h3>Divergent cases</h3>
         ${
-          options.currentDrift.divergent_cases.length > 0
-            ? `<ul class="list">${options.currentDrift.divergent_cases
-                .slice(0, 10)
-                .map(
-                  (entry) =>
-                    `<li><strong>${escapeHtml(entry.case_id)}</strong> — similarity ${entry.similarity.toFixed(2)}<br /><span class="muted">${escapeHtml(redactTextValue(entry.input))}</span></li>`
-                )
-                .join("")}</ul>`
-            : "<p class=\"muted\">No divergent cases crossed the configured threshold.</p>"
+          options.currentDrift
+            ? `<div class="summary-grid">
+                <div class="metric">
+                  <div class="metric-label">Semantic drift trend</div>
+                  <div class="metric-value">${renderSparkline(options.driftTrend.map((entry) => entry.semantic_drift))}</div>
+                </div>
+                <div class="metric">
+                  <div class="metric-label">Tool call pattern changes</div>
+                  <div class="metric-value" style="font-size:1rem;font-weight:600">
+                    ${
+                      toolPatternChanges.length > 0
+                        ? toolPatternChanges
+                            .slice(0, 8)
+                            .map((entry) => `<div>${escapeHtml(entry)}</div>`)
+                            .join("")
+                        : "<span class=\"muted\">No tool call pattern changes detected.</span>"
+                    }
+                  </div>
+                </div>
+              </div>
+              <h3>Divergent cases</h3>
+              ${
+                options.currentDrift.divergent_cases.length > 0
+                  ? `<ul class="list">${options.currentDrift.divergent_cases
+                      .slice(0, 10)
+                      .map(
+                        (entry) =>
+                          `<li><strong>${escapeHtml(entry.case_id)}</strong> — similarity ${entry.similarity.toFixed(2)}<br /><span class="muted">${escapeHtml(redactTextValue(entry.input))}</span></li>`
+                      )
+                      .join("")}</ul>`
+                  : "<p class=\"muted\">No divergent cases crossed the configured threshold.</p>"
+              }`
+            : `<p class="muted">${escapeHtml(options.driftError ?? "Insufficient data — no drift comparison available.")}</p>`
         }
       </section>
+
+      ${renderPccpReadinessSignalsSection(options.readinessSignals)}
 
       <section class="panel">
         <h2>Trace Sample</h2>
@@ -1059,15 +1454,321 @@ function renderClinicalAuditHtml(options: {
       <section class="panel">
         <h2>System Record</h2>
         ${systemRows.length > 0 ? renderTable(["Date", "Model versions", "Prompt hashes", "Dataset versions"], systemRows) : "<p class=\"muted\">No system metadata recorded in the selected date range.</p>"}
-        <p><strong>FDA PCCP alignment:</strong> ${
+        ${
           hasFullSystemRecord
-            ? "All changes to model, prompt, or policy documented above. No undocumented changes detected."
-            : "System metadata is incomplete for this date range. Undocumented changes cannot be ruled out."
-        }</p>
+            ? ""
+            : "<p class=\"muted\">System metadata is incomplete for this date range.</p>"
+        }
       </section>
     </main>
   </body>
 </html>`;
+}
+
+function escapeMarkdownTableCell(value: string): string {
+  return value.replaceAll("|", "\\|").replaceAll("\n", "<br />");
+}
+
+function renderMarkdownTable(headers: string[], rows: string[][]): string {
+  const headerLine = `| ${headers.map((header) => escapeMarkdownTableCell(header)).join(" | ")} |`;
+  const dividerLine = `| ${headers.map(() => "---").join(" | ")} |`;
+  const body = rows.map(
+    (row) => `| ${row.map((cell) => escapeMarkdownTableCell(cell)).join(" | ")} |`
+  );
+
+  return [headerLine, dividerLine, ...body].join("\n");
+}
+
+function renderContractSummaryMarkdown(entries: ContractAuditEntry[]): string {
+  if (entries.length === 0) {
+    return "No contract evaluations recorded in this date range.";
+  }
+
+  const summaryRows = buildContractRowSummaries(entries).map((row) => [
+    row.contractName,
+    row.suiteName,
+    String(row.totalAssertions),
+    String(row.hardFails),
+    String(row.escalations),
+    String(row.softFails),
+  ]);
+  const hardFailItems = entries
+    .filter((entry) => !entry.passed && entry.failure_mode === "hard_fail")
+    .flatMap((entry) =>
+      entry.assertions
+        .filter((assertion) => !assertion.passed)
+        .map((assertion) => {
+          const fieldPart = assertion.field ? ` ${assertion.field} =` : "";
+          const observed =
+            assertion.observed !== null && assertion.observed !== undefined
+              ? JSON.stringify(assertion.observed)
+              : "null";
+          return `- **${entry.contract_name} / ${entry.case_id}**: ${assertion.type} failed:${fieldPart} ${observed}`;
+        })
+    );
+  const escalationItems = entries
+    .filter((entry) => !entry.passed && entry.failure_mode === "escalation_required")
+    .flatMap((entry) =>
+      entry.assertions
+        .filter((assertion) => !assertion.passed)
+        .map((assertion) => {
+          const observed =
+            assertion.observed !== null && assertion.observed !== undefined
+              ? String(assertion.observed)
+              : "null";
+          return `- **${entry.contract_name} / ${entry.case_id}**: ${assertion.type} ${observed} (threshold: ${assertion.expected})`;
+        })
+    );
+
+  return [
+    renderMarkdownTable(
+      ["Contract", "Suite", "Assertions", "Hard Fails", "Escalations", "Soft Fails"],
+      summaryRows
+    ),
+    "",
+    "### Hard failures (merge-blocking)",
+    hardFailItems.length > 0 ? hardFailItems.join("\n") : "No hard failures recorded.",
+    "",
+    "### Escalations required",
+    escalationItems.length > 0 ? escalationItems.join("\n") : "No escalations recorded.",
+  ].join("\n");
+}
+
+function renderTraceSampleMarkdown(trace: AuditTraceRecord): string {
+  const redacted = redactAuditTrace(trace);
+  const tools =
+    redacted.tools_called.length > 0
+      ? redacted.tools_called
+          .map((tool) =>
+            `${tool.tool_name}${tool.data_accessed.length > 0 ? ` (${tool.data_accessed.join(", ")})` : ""}`
+          )
+          .join(", ")
+      : "none";
+  const flags = redacted.flags.length > 0 ? redacted.flags.map((flag) => flag.type).join(", ") : "none";
+
+  return [
+    `### ${redacted.suite_name} / ${redacted.case_id}`,
+    `- Status: ${redacted.passed ? "passing" : "flagged"}`,
+    `- Duration: ${String(redacted.duration_ms)}ms`,
+    `- Tools called: ${tools}`,
+    `- Flags: ${flags}`,
+    "",
+    "**Input**",
+    "```text",
+    redacted.input,
+    "```",
+    "",
+    "**Output**",
+    "```text",
+    redacted.output ?? "",
+    "```",
+  ].join("\n");
+}
+
+function renderClinicalAuditMarkdown(options: {
+  since: string;
+  summary: ReportSummary;
+  latestRun: EvalRunAuditRecord | null;
+  traces: AuditTraceRecord[];
+  contractEntries: ContractAuditEntry[];
+  readinessSignals: PccpReadinessSignal[];
+  driftThresholds: DriftThresholdConfig;
+  currentDrift: DriftComparisonResult | null;
+  driftTrend: DriftComparisonResult[];
+  driftError: string | null;
+  systemTimeline: Array<{
+    date: string;
+    modelVersions: string[];
+    promptHashes: string[];
+    datasetVersions: string[];
+  }>;
+}): string {
+  const consensusTraces = options.traces.filter((trace) => trace.consensus_result);
+  const allDisagreements = consensusTraces
+    .filter(
+      (trace) =>
+        traceHasFlag(trace, "consensus_disagreement") ||
+        trace.consensus_result?.flag?.type === "consensus_disagreement"
+    )
+    .sort(
+      (left, right) =>
+        (left.consensus_result?.agreement_rate ?? 1) - (right.consensus_result?.agreement_rate ?? 1)
+    );
+  const disagreementCases = allDisagreements
+    .slice(0, 5)
+    .map((trace) => redactAuditTrace(trace));
+  const disagreementRate =
+    consensusTraces.length === 0
+      ? null
+      : allDisagreements.length / consensusTraces.length;
+  const representativeTraces = selectRepresentativeTraces(options.traces);
+  const datasetHashRows =
+    options.latestRun?.suites.map((suite) => [suite.name, suite.dataset_hash]) ?? [];
+  const evaluationRows =
+    options.latestRun?.suites.map((suite) => [
+      suite.name,
+      String(suite.case_count),
+      formatPercent(suite.pass_rate),
+      formatDelta(suite.baseline_delta),
+    ]) ?? [];
+  const driftRows =
+    options.currentDrift === null
+      ? []
+      : [
+          [
+            "semantic_drift",
+            options.currentDrift.semantic_drift.toFixed(2),
+            options.currentDrift.semantic_drift >= options.driftThresholds.semantic_drift
+              ? "PASS"
+              : "FAIL",
+          ],
+          [
+            "tool_call_drift",
+            options.currentDrift.tool_call_drift.toFixed(2),
+            options.currentDrift.tool_call_drift >= options.driftThresholds.tool_call_drift
+              ? "PASS"
+              : "FAIL",
+          ],
+          [
+            "latency_drift_ms",
+            formatLatencyDelta(options.currentDrift.latency_drift_ms),
+            options.currentDrift.latency_drift_ms <= options.driftThresholds.latency_drift_ms
+              ? "PASS"
+              : "FAIL",
+          ],
+        ];
+  const driftTrendRows = options.driftTrend.map((entry) => [
+    entry.timestamp,
+    entry.semantic_drift.toFixed(2),
+    entry.tool_call_drift.toFixed(2),
+    formatLatencyDelta(entry.latency_drift_ms),
+    entry.threshold_breaches.length > 0 ? entry.threshold_breaches.join(", ") : "none",
+  ]);
+  const toolPatternChanges =
+    options.currentDrift === null
+      ? []
+      : [
+          ...(options.currentDrift.tool_patterns_added ?? []).map((pattern) => `- Added: ${pattern}`),
+          ...(options.currentDrift.tool_patterns_removed ?? []).map((pattern) => `- Removed: ${pattern}`),
+        ];
+  const divergentCaseRows =
+    options.currentDrift?.divergent_cases.map((entry) => [
+      entry.case_id,
+      entry.similarity.toFixed(2),
+      String(redactTextValue(entry.input)),
+    ]) ?? [];
+  const systemRows = options.systemTimeline.map((entry) => [
+    entry.date,
+    entry.modelVersions.join(", ") || "unknown",
+    entry.promptHashes.join(", ") || "unknown",
+    entry.datasetVersions.join(" | ") || "unknown",
+  ]);
+
+  return [
+    "# Clinical Audit Report",
+    "",
+    `Generated for **${options.summary.agentName}** from **${options.since}** through **${formatDate(new Date().toISOString())}**.`,
+    "",
+    "## Summary",
+    renderMarkdownTable(
+      ["Metric", "Value"],
+      [
+        ["Agent", options.summary.agentName],
+        ["Model", options.summary.modelSummary],
+        ["Total runs", String(options.summary.totalRuns)],
+        ["Total traces", String(options.summary.totalTraces)],
+        ["Eval pass rate", formatPercent(options.summary.evalPassRate)],
+        [
+          "Consensus agreement",
+          options.summary.consensusAgreementRate === null
+            ? "No consensus calls recorded"
+            : formatPercent(options.summary.consensusAgreementRate),
+        ],
+      ]
+    ),
+    "",
+    "## Evaluation Record",
+    evaluationRows.length > 0
+      ? renderMarkdownTable(["Suite", "Cases", "Pass rate", "Baseline delta"], evaluationRows)
+      : "No eval runs found in the selected date range.",
+    "",
+    "### Dataset Hashes",
+    datasetHashRows.length > 0
+      ? renderMarkdownTable(["Suite", "Dataset hash"], datasetHashRows)
+      : "No dataset hashes recorded.",
+    "",
+    "## Contract Summary",
+    renderContractSummaryMarkdown(options.contractEntries),
+    "",
+    "## Consensus Log",
+    renderMarkdownTable(
+      ["Metric", "Value"],
+      [
+        ["Total consensus calls", String(consensusTraces.length)],
+        [
+          "Disagreement rate",
+          disagreementRate === null ? "n/a" : formatPercent(disagreementRate),
+        ],
+      ]
+    ),
+    "",
+    "### Top 5 disagreements",
+    disagreementCases.length > 0
+      ? disagreementCases
+          .map((trace) =>
+            [
+              `#### ${trace.case_id}`,
+              `- Agreement: ${(trace.consensus_result?.agreement_rate ?? 0).toFixed(2)}`,
+              "",
+              "**Input**",
+              "```text",
+              trace.input,
+              "```",
+            ].join("\n")
+          )
+          .join("\n\n")
+      : "No consensus disagreements recorded in this date range.",
+    "",
+    "## Drift Report",
+    options.currentDrift
+      ? renderMarkdownTable(["Metric", "Value", "Status"], driftRows)
+      : options.driftError ?? "Insufficient data — no drift comparison available.",
+    "",
+    "### Drift trend",
+    driftTrendRows.length > 0
+      ? renderMarkdownTable(
+          ["Timestamp", "Semantic drift", "Tool call drift", "Latency drift", "Threshold breaches"],
+          driftTrendRows
+        )
+      : "No drift history recorded for this reference in the selected period.",
+    "",
+    "### Tool call pattern changes",
+    toolPatternChanges.length > 0
+      ? toolPatternChanges.join("\n")
+      : "No tool call pattern changes detected.",
+    "",
+    "### Divergent cases",
+    divergentCaseRows.length > 0
+      ? renderMarkdownTable(["Case", "Similarity", "Input"], divergentCaseRows)
+      : "No divergent cases crossed the configured threshold.",
+    "",
+    "## PCCP Readiness Signals",
+    renderMarkdownTable(
+      ["Signal", "Status", "Explanation"],
+      options.readinessSignals.map((signal) => [signal.name, signal.status, signal.explanation])
+    ),
+    "",
+    "## Trace Sample",
+    representativeTraces.length > 0
+      ? representativeTraces.map((trace) => renderTraceSampleMarkdown(trace)).join("\n\n")
+      : "No trace evidence available for the selected date range.",
+    "",
+    "## System Record",
+    systemRows.length > 0
+      ? renderMarkdownTable(["Date", "Model versions", "Prompt hashes", "Dataset versions"], systemRows)
+      : "No system metadata recorded in the selected date range.",
+    "",
+  ].join("\n");
 }
 
 export async function generateClinicalAuditReport(
@@ -1075,30 +1776,26 @@ export async function generateClinicalAuditReport(
 ): Promise<ClinicalAuditReportResult> {
   readDate(options.since);
 
-  // Evidence is always read from .agentura in the directory where the command is run,
-  // consistent with how agentura run writes evidence.
-  const agenturaDir = path.join(process.cwd(), ".agentura");
+  const agenturaDir = path.join(options.cwd, ".agentura");
 
-  const [auditRecords, traceFiles, contractEntries, driftThresholds, driftHistory] = await Promise.all([
+  const [auditRecords, traceFiles, contractEntries, configHints, driftHistory, referenceLabels, diffReport] =
+    await Promise.all([
     readEvalRunAuditRecordsSince(agenturaDir, options.since),
     readTraceFilesSince(agenturaDir, options.since),
     readContractResultsSince(agenturaDir, options.since),
-    loadConfiguredThresholds(options.cwd),
+    loadReportConfigHints(options.cwd),
     readDriftHistory(options.cwd),
+    listReferenceLabels(options.cwd),
+    readLatestDiffReport(agenturaDir, options.since),
   ]);
-
-  const currentDrift = await diffAgainstReference({
-    cwd: options.cwd,
-    label: options.reference,
-    thresholds: driftThresholds,
+  const drift = await computeDriftEvidence({
+    reference: options.reference,
+    referenceLabels,
+    driftHistory: driftHistory.filter((entry) => readDate(entry.timestamp) >= readDate(options.since)),
+    driftThresholds: configHints.driftThresholds,
     agentFn: options.agentFn,
+    cwd: options.cwd,
   });
-  const relevantDriftHistory = driftHistory
-    .filter(
-      (entry) =>
-        entry.reference_label === options.reference && readDate(entry.timestamp) >= readDate(options.since)
-    )
-    .concat(currentDrift);
   const combinedTraces = dedupeTraces([
     ...auditRecords.flatMap((record) =>
       record.traces.map((trace) => ({
@@ -1125,20 +1822,44 @@ export async function generateClinicalAuditReport(
           .filter((value): value is number => typeof value === "number")
       ),
   };
-  const html = renderClinicalAuditHtml({
+  const readinessSignals = computePccpReadinessSignals({
+    auditRecords,
+    contractEntries,
+    contractsConfigured: configHints.contractsConfigured,
+    diffReport,
+    drift,
+  });
+  const rendered =
+    options.format === "md"
+      ? renderClinicalAuditMarkdown({
+          since: options.since,
+          summary,
+          latestRun,
+          traces: combinedTraces,
+          contractEntries,
+          readinessSignals,
+          driftThresholds: configHints.driftThresholds,
+          currentDrift: drift.current,
+          driftTrend: drift.history,
+          driftError: drift.error,
+          systemTimeline: buildSystemTimeline(auditRecords),
+        })
+      : renderClinicalAuditHtml({
     since: options.since,
     summary,
     latestRun,
     traces: combinedTraces,
     contractEntries,
-    driftThresholds,
-    currentDrift,
-    driftTrend: relevantDriftHistory,
+    readinessSignals,
+    driftThresholds: configHints.driftThresholds,
+    currentDrift: drift.current,
+    driftTrend: drift.history,
+    driftError: drift.error,
     systemTimeline: buildSystemTimeline(auditRecords),
   });
   const outputPath = path.resolve(options.cwd, options.outPath);
   await ensureDirectory(path.dirname(outputPath));
-  await fs.writeFile(outputPath, html, "utf-8");
+  await fs.writeFile(outputPath, rendered, "utf-8");
 
   return {
     outputPath,

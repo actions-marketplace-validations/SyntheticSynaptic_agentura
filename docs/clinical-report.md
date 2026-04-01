@@ -12,17 +12,27 @@ Use this when a CMIO, quality lead, or regulator needs one artifact that answers
 ## Generate a report
 
 ```bash
+agentura report --out clinical-audit-latest.html
+agentura report --format md --out clinical-audit-latest.md
 agentura report \
   --since 2026-03-01 \
   --reference v1.0-pre-prompt-change \
   --out clinical-audit-2026-03.html
 ```
 
-Required flags:
+Required flag:
 
-- `--since`: include evidence on or after this date
-- `--reference`: frozen reference label used for drift reporting
-- `--out`: output HTML file path
+- `--out`: output report file path
+
+Optional flags:
+
+- `--since`: include evidence on or after this date. Defaults to the earliest
+  local audit evidence date.
+- `--reference`: frozen reference label used for drift reporting. Defaults to
+  `drift.reference` in `agentura.yaml`, or the sole local reference snapshot
+  when only one exists.
+- `--format md`: render the same report in GitHub-friendly markdown instead of
+  HTML.
 
 The generated file is fully self-contained:
 
@@ -47,16 +57,22 @@ The generated file is fully self-contained:
    - top disagreement cases with redacted inputs
 4. Drift report
    - semantic drift sparkline
+   - markdown export replaces the sparkline with a drift trend table
    - tool-call pattern additions and removals
    - divergent case list
-5. Trace sample
+5. PCCP Readiness Signals
+   - eval coverage
+   - baseline stability
+   - contract enforcement
+   - drift status
+   - model version consistency
+6. Trace sample
    - representative passing and flagged traces
    - input, output, tools called, flags, and duration
-6. System record
+7. System record
    - observed model versions by date
    - prompt hashes by date
    - dataset versions by date
-   - FDA PCCP alignment statement
 
 ## Evidence sources
 

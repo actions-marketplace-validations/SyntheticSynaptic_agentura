@@ -93,9 +93,10 @@ program
 program
   .command("report")
   .description("Generate a self-contained clinical audit report from local eval evidence")
-  .requiredOption("--since <date>", "Only include evidence on or after this YYYY-MM-DD date")
-  .requiredOption("--reference <label>", "Frozen reference label used for drift reporting")
-  .requiredOption("--out <file>", "Output HTML file path")
+  .option("--since <date>", "Only include evidence on or after this YYYY-MM-DD date")
+  .option("--reference <label>", "Frozen reference label used for drift reporting")
+  .option("--format <type>", "Report format: html | md", "html")
+  .requiredOption("--out <file>", "Output report file path")
   .action(reportCommand);
 
 const referenceProgram = program

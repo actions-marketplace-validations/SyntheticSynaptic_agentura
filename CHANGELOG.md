@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- PCCP Readiness Signals section in `agentura report` — five signals computed
+  from real eval data (eval coverage, baseline stability, contract enforcement,
+  drift status, model version consistency), each with PASS/WARN/FAIL status
+- `--format md` flag for `agentura report` — generates a GitHub-renderable
+  markdown export alongside or instead of the HTML report
+
+---
+
 ## [0.5.0] — 2026-04-01
 
 ### Added

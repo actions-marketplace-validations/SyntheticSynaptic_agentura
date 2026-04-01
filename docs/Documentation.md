@@ -8,8 +8,8 @@
 ## Current Status
 
 **Active milestone:** J — Clinical Audit Report Generator
-**Progress:** Added immutable local eval-run audit records and a self-contained clinical HTML report for CMIO and FDA PCCP review
-**Last updated:** Added `agentura report`, report-time redaction, drift trend rendering, and clinical governance docs
+**Progress:** Added immutable local eval-run audit records plus HTML and markdown clinical audit exports with computed PCCP readiness signals
+**Last updated:** Added `agentura report --format md`, default report option resolution, and real PCCP readiness signals sourced from local eval evidence
 **Next action:** Surface the same clinical audit evidence in the dashboard and decide whether cloud-hosted eval runs should emit the same immutable report inputs
 
 ---
@@ -3017,3 +3017,37 @@ Resume from a clean worktree after the earlier contracts task is either committe
 
 **Next session:**
 Continue from the committed trace-contract implementation if follow-up polish is needed, and regenerate demo-local `.agentura` artifacts only when re-running the example.
+
+## Session — 2026-04-01 22:40 UTC
+
+**Milestone:** J — Clinical Audit Report Generator
+**Status:** COMPLETE
+
+**Files modified:**
+- `packages/cli/src/lib/report.ts` — added report option resolution defaults, PCCP readiness signal computation, graceful drift/baseline evidence handling, and markdown report rendering alongside the existing HTML output
+- `packages/cli/src/commands/report.ts` — resolved default `since`/`reference` values before generation and only invoked the live agent when drift comparison evidence was available
+- `packages/cli/src/index.ts` — added `report --format` and relaxed `--since` / `--reference` from required to optional defaults
+- `packages/cli/src/commands/run.test.ts` — extended the clinical audit report coverage to validate PCCP readiness rows, default report invocation, and markdown export generation
+- `docs/clinical-report.md` — documented report defaults, markdown export, and the new PCCP readiness section
+- `CHANGELOG.md` — added the Unreleased entry for PCCP readiness signals and markdown export
+- `docs/Documentation.md` — updated current status and appended this session summary
+
+**Decisions made:**
+- `agentura report` now defaults `--since` to the earliest local eval audit date and `--reference` to `drift.reference` in `agentura.yaml` or the sole local reference snapshot, so the command works out of the box in the example project.
+- PCCP readiness is derived only from recorded local evidence: eval audit traces for coverage, stored baseline diff for pass→fail flips, manifest contract entries for contract enforcement, reference drift evidence for drift status, and recorded model versions for version consistency.
+- Drift comparison failures no longer abort report generation; the report renders with an "Insufficient data" readiness/drift status instead, preserving audit export usability when the current agent cannot replay the frozen reference inputs.
+
+**Validation results:**
+- `pnpm --dir packages/cli run build`: PASS
+- `cd packages/cli && node --test --import tsx src/commands/run.test.ts --test-name-pattern "report command renders a self-contained clinical audit html report with drift, consensus, and redaction"`: PASS
+- `cd examples/triage-agent && npx agentura report --out audit.html`: PASS
+- `cd examples/triage-agent && npx agentura report --format md --out audit.md`: PASS
+- `pnpm build`: PASS
+- `pnpm type-check`: PASS
+
+**Issues found:**
+- The triage example's live drift comparison currently resolves to "Insufficient data — Unknown triage case" because the frozen reference inputs cannot be replayed cleanly against the current CLI demo agent, but the report still generates and surfaces that limitation instead of failing.
+- Validation generated `examples/triage-agent/audit.html` and `examples/triage-agent/audit.md`; these are local verification artifacts and should not be committed.
+
+**Next session:**
+Decide whether to expose the same PCCP readiness signals in the dashboard project/run views and whether cloud-hosted report generation should snapshot the same local evidence shape for parity with the CLI export.

@@ -2543,6 +2543,67 @@ test("report command renders a self-contained clinical audit html report with dr
     ) + "\n",
     "utf-8"
   );
+  await writeFile(
+    path.join(directory, ".agentura", "diff.json"),
+    JSON.stringify(
+      {
+        version: 1,
+        timestamp: "2026-03-27T12:00:30.000Z",
+        baselineFound: true,
+        resetBaseline: false,
+        summary: {
+          regressions: 1,
+          improvements: 0,
+          newCases: 0,
+          missingCases: 0,
+        },
+        suites: {
+          accuracy: {
+            score: 1,
+            baselineScore: 0.8,
+            regressions: [
+              {
+                id: "case_2",
+                baselinePassed: true,
+                currentPassed: false,
+              },
+            ],
+            improvements: [],
+            newCases: [],
+            missingCases: [],
+          },
+        },
+      },
+      null,
+      2
+    ) + "\n",
+    "utf-8"
+  );
+  await writeFile(
+    path.join(directory, ".agentura", "manifest.jsonl"),
+    `${JSON.stringify({
+      type: "contract_result",
+      run_id: "run-2",
+      timestamp: "2026-03-27T12:00:15.000Z",
+      contract_name: "action_boundary",
+      contract_version: "0.5.0",
+      eval_suite: "accuracy",
+      case_id: "case_2",
+      failure_mode: "hard_fail",
+      passed: false,
+      assertions: [
+        {
+          type: "allowed_values",
+          passed: false,
+          field: "output.action",
+          observed: "prescribe",
+          expected: "observe, refer, escalate",
+          message: "Action outside approved scope",
+        },
+      ],
+    })}\n`,
+    "utf-8"
+  );
 
   await writeFile(
     path.join(directory, "agent.mjs"),
@@ -2595,10 +2656,6 @@ drift:
 
   const result = await runCli(directory, [
     "report",
-    "--since",
-    "2026-03-01",
-    "--reference",
-    "v1.0-pre-prompt-change",
     "--out",
     "clinical-audit-2026-03.html",
   ], {
@@ -2624,13 +2681,43 @@ drift:
   assert.match(html, /sha256:dataset-a/);
   assert.match(html, /consensus_check/);
   assert.match(html, /Semantic drift trend/);
+  assert.match(html, /PCCP Readiness Signals/);
+  assert.match(html, /Eval coverage/);
+  assert.match(html, /Baseline stability/);
+  assert.match(html, /Contract enforcement/);
+  assert.match(html, /Drift status/);
+  assert.match(html, /Model version consistency/);
+  assert.match(html, /Contracts were active and 1 hard_fail event\(s\) fired in this period\./);
+  assert.match(html, /1 case\(s\) flipped pass→fail versus the stored baseline\./);
   assert.match(html, /Added: case_4:watchful_wait:\{&quot;months&quot;:6\}/);
   assert.match(html, /Removed: case_4:route_specialist:\{&quot;specialty&quot;:&quot;achd&quot;\}/);
-  assert.match(html, /All changes to model, prompt, or policy documented above\. No undocumented changes detected\./);
+  assert.doesNotMatch(html, /FDA PCCP alignment/);
   assert.match(html, /\[REDACTED\]/);
   assert.doesNotMatch(html, /Alice Example/);
   assert.doesNotMatch(html, /1 Main St/);
   assert.doesNotMatch(html, /https?:\/\//);
+
+  const markdownResult = await runCli(directory, [
+    "report",
+    "--format",
+    "md",
+    "--out",
+    "clinical-audit-2026-03.md",
+  ], {
+    OPENAI_API_KEY: null,
+    ANTHROPIC_API_KEY: null,
+    GEMINI_API_KEY: null,
+    GROQ_API_KEY: null,
+    OLLAMA_BASE_URL: "http://127.0.0.1:1",
+  });
+
+  assert.equal(markdownResult.code, 0);
+  const markdown = await readFile(path.join(directory, "clinical-audit-2026-03.md"), "utf-8");
+  assert.match(markdown, /^# Clinical Audit Report/m);
+  assert.match(markdown, /^## PCCP Readiness Signals$/m);
+  assert.match(markdown, /^\| Timestamp \| Semantic drift \| Tool call drift \| Latency drift \| Threshold breaches \|$/m);
+  assert.match(markdown, /Contracts were active and 1 hard_fail event\(s\) fired in this period\./);
+  assert.doesNotMatch(markdown, /<svg/i);
 });
 
 test("consensus command parser normalizes provider aliases and validates threshold", () => {
