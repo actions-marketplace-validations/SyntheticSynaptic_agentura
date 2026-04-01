@@ -939,7 +939,7 @@ export async function generateClinicalAuditReport(
     evalPassRate:
       auditRecords.length === 0
         ? 0
-        : auditRecords.filter((record) => record.overall_passed).length / auditRecords.length,
+        : auditRecords.filter((record) => record.suites.every((suite) => suite.passed)).length / auditRecords.length,
     consensusAgreementRate:
       calculateMean(
         combinedTraces
