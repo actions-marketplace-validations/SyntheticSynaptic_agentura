@@ -2872,3 +2872,83 @@ Continue Milestone 19 UI polish on the playground and settings surfaces, using p
 
 **Next session:**
 Continue Milestone 19 playground polish if additional header or mobile-spacing tweaks come in after this simplified nav update.
+
+## Session — 2026-04-01 01:00 UTC
+
+**Milestone:** 11 — CLI: init + run Commands
+**Status:** IN PROGRESS
+
+**Files created:**
+- `examples/triage-agent/agent.js` — added a mock triage agent that emits deterministic actions and confidence values for contract verification
+- `examples/triage-agent/agentura.yaml` — added a demo config with `contracts` definitions for hard-fail and escalation-required scenarios
+- `examples/triage-agent/evals/triage.jsonl` — added a 15-case demo dataset covering clean passes, one scope violation, and three review escalations
+- `examples/triage-agent/package.json` — added a minimal package manifest for the demo fixture
+- `packages/eval-runner/src/contracts.ts` — implemented contract assertion evaluation, dot-notation field resolution, and retry-mode normalization
+- `packages/eval-runner/src/contracts.test.ts` — added unit coverage for every contract assertion type plus missing-field and malformed-output cases
+
+**Files modified:**
+- `packages/types/src/index.ts` — added shared contract config and assertion types to the Agentura config schema
+- `packages/eval-runner/src/index.ts` — exported the new contract evaluator helpers for CLI use
+- `packages/cli/src/index.ts` — extended local run options to accept an explicit `--config` path
+- `packages/cli/src/commands/run.ts` — wired the `--config` flag into the run command parser
+- `packages/cli/src/lib/load-dataset.ts` — resolved dataset paths relative to the selected config file directory
+- `packages/cli/src/lib/load-rubric.ts` — resolved rubric paths relative to the selected config file directory
+- `packages/cli/src/lib/local-run.ts` — parsed `contracts`, evaluated them after suites, appended contract audit entries, rendered CLI contract summaries, enforced failure-mode exit behavior, and scoped local state to the config directory
+- `packages/cli/src/commands/run.test.ts` — added an end-to-end CLI test covering nested `--config` execution plus contract manifest output
+- `docs/Documentation.md` — appended this session summary
+
+**Decisions made:**
+- Added contract evaluation after eval suites complete so assertions run against the actual case output without changing existing eval strategy behavior.
+- Resolved `output.*` contract fields against both stripped and fully nested JSON paths so flat agent outputs and nested output payloads both work deterministically.
+- Added `--config` support and config-relative file resolution because the required example workflow runs from the repo root against a nested demo project.
+
+**Validation results:**
+- `npx agentura run --local --config examples/triage-agent/agentura.yaml`: PASS (`clinical_action_boundary` hard-failed on `triage_003`, `confidence_floor` escalated `triage_007`, `triage_011`, and `triage_014`, exit code 1)
+- `node` audit-manifest inspection for flat `output.action` resolution: PASS (observed `prescribe` for `triage_003`, assertion failed as expected)
+- `npx agentura run --local --config examples/triage-agent/agentura.yaml` after temporary nested-path fixture changes: PASS (`output.recommendation.action` resolved to `prescribe` and failed as expected)
+- `npx agentura run --local --config examples/triage-agent/agentura.yaml` after reverting the temporary nested-path changes: PASS (returned to the original hard-fail plus escalation behavior)
+- `pnpm build`: PASS
+- `pnpm test`: PASS
+- `pnpm type-check`: PASS
+
+**Issues found:**
+- `pnpm build` emitted the existing non-fatal Google Fonts download warning in the network-restricted sandbox, but the build still completed successfully.
+
+**Next session:**
+Wait for human approval, then commit the contracts feature only if the verified results are accepted.
+
+## Session — 2026-04-01 03:25 UTC
+
+**Milestone:** 11 — CLI: init + run Commands
+**Status:** COMPLETE
+
+**Files modified:**
+- `packages/core/src/consensus.ts` — added Groq and Ollama consensus providers, Ollama reachability checks, and provider-specific missing-key handling while preserving existing Anthropic/OpenAI flows
+- `packages/cli/src/commands/consensus.ts` — added interactive prompts for missing `--input` and `--models`, plus actionable preflight API key errors for Anthropic, OpenAI, Gemini, and Groq
+- `packages/cli/src/commands/trace.ts` — added interactive prompts for missing `--agent` and `--input`
+- `packages/types/src/index.ts` — expanded consensus provider types to include Gemini, Groq, and Ollama
+- `packages/cli/src/index.ts` — made consensus `--input` and `--models` optional at parse time so the command can prompt interactively
+- `packages/cli/src/lib/local-run.ts` — expanded the consensus config schema to accept Groq and Ollama providers
+- `packages/cli/src/commands/run.test.ts` — added coverage for Groq, Gemini, and Ollama consensus parsing, structured error handling, and actionable missing-key exits
+- `docs/Documentation.md` — appended this session summary
+
+**Decisions made:**
+- Kept the existing internal `google` provider path in consensus for backward compatibility, while accepting `gemini` as a first-class provider string in user-facing model specifiers.
+- Left `llm_judge` and `semantic_similarity` scorer files unchanged because Anthropic, OpenAI, Gemini, Groq, and Ollama were already implemented there in the expected detection order.
+- Returned structured per-model errors for Ollama outages instead of throwing, so mixed-provider consensus runs still complete and record successful model outputs when available.
+
+**Validation results:**
+- `pnpm build && pnpm type-check`: PASS
+- `pnpm test`: PASS
+- `printenv GROQ_API_KEY`: not set, so live Groq consensus verification was skipped
+- `npx agentura consensus --input "Patient presents with chest pain and shortness of breath. What is the priority action?" --models "ollama:nemotron-3-nano,ollama:ZimaBlueAI/HuatuoGPT-o1-8B" --threshold 0.80 --verbose`: PASS for structured error handling, but live generation could not run because the local Ollama server was unavailable
+- `printenv GEMINI_API_KEY`: not set, so live Gemini consensus verification was skipped
+- `npx agentura consensus`: PASS (prompted for `Input text:` and `Models (...)` interactively)
+- `env -u GROQ_API_KEY npx agentura consensus --input "test" --models "groq:llama-3.3-70b-versatile"`: PASS (printed actionable missing-key guidance and exited 1)
+
+**Issues found:**
+- `ollama list` crashed locally with a macOS/MLX exception, and `http://localhost:11434/api/tags` was unreachable during verification, so the live Ollama consensus check could only verify the expected structured error path.
+- `pnpm build` continued to emit the existing non-fatal Google Fonts warning in the sandboxed environment.
+
+**Next session:**
+Resume from a clean worktree after the earlier contracts task is either committed separately or discarded, so future CLI changes do not need selective staging around unrelated work.

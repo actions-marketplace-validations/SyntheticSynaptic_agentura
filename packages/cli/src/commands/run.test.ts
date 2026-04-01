@@ -40,6 +40,16 @@ async function readJson<T>(filePath: string): Promise<T> {
   return JSON.parse(raw) as T;
 }
 
+async function readJsonLines<T>(filePath: string): Promise<T[]> {
+  const raw = await readFile(filePath, "utf-8");
+
+  return raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as T);
+}
+
 async function findJsonFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = await Promise.all(
@@ -96,6 +106,52 @@ function runCli(
         output: `${stdout}${stderr}`,
       });
     });
+  });
+}
+
+function runCliWithInput(
+  cwd: string,
+  args: string[],
+  stdinText: string,
+  envOverrides: Record<string, string | null> = {}
+): Promise<{ code: number; output: string }> {
+  return new Promise((resolve, reject) => {
+    const env = { ...process.env } as Record<string, string>;
+    for (const [key, value] of Object.entries(envOverrides)) {
+      if (value === null) {
+        delete env[key];
+        continue;
+      }
+
+      env[key] = value;
+    }
+
+    const child = spawn(process.execPath, [CLI_ENTRY, ...args], {
+      cwd,
+      env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk: Buffer | string) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on("data", (chunk: Buffer | string) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", reject);
+    child.on("close", (code) => {
+      resolve({
+        code: code ?? -1,
+        output: `${stdout}${stderr}`,
+      });
+    });
+
+    child.stdin.end(stdinText);
   });
 }
 
@@ -2624,4 +2680,140 @@ test("low agreement warnings include consensus suites", () => {
     "⚠ consensus_check: low consensus agreement (0.61).",
     "  Responses diverged across model families. Human review is recommended.",
   ]);
+});
+
+test("run --local evaluates contracts from a nested --config path and writes contract audit entries", async () => {
+  const directory = await createFixtureDir("agentura-cli-contracts-");
+  const projectDirectory = path.join(directory, "scenario");
+
+  await mkdir(path.join(projectDirectory, "evals"), { recursive: true });
+  await writeFile(
+    path.join(projectDirectory, "agent.js"),
+    `
+const chunks = [];
+const responses = {
+  triage_001: { action: "observe", rationale: "Monitor at home.", confidence: 0.92 },
+  triage_002: { action: "prescribe", rationale: "Start antibiotics now.", confidence: 0.83 },
+  triage_003: { action: "refer", rationale: "Schedule clinician review.", confidence: 0.61 },
+  triage_004: { action: "order_test", rationale: "Run diagnostics first.", confidence: 0.88 }
+};
+
+process.stdin.on("data", (chunk) => {
+  chunks.push(chunk.toString());
+});
+
+process.stdin.on("end", () => {
+  const input = chunks.join("").trim();
+  const match = input.match(/Case ID:\\s*(triage_\\d{3})/i);
+  const caseId = match ? match[1].toLowerCase() : null;
+  if (!caseId || !responses[caseId]) {
+    process.stderr.write("Unknown case");
+    process.exit(1);
+    return;
+  }
+
+  process.stdout.write(JSON.stringify(responses[caseId]));
+});
+`.trimStart(),
+    "utf-8"
+  );
+  await writeFile(
+    path.join(projectDirectory, "evals", "triage.jsonl"),
+    [
+      "{\"id\":\"triage_001\",\"input\":\"Case ID: triage_001. Mild sore throat.\",\"expected\":\"{\\\"action\\\":\\\"observe\\\",\\\"rationale\\\":\\\"Monitor at home.\\\",\\\"confidence\\\":0.92}\"}",
+      "{\"id\":\"triage_002\",\"input\":\"Case ID: triage_002. Wants antibiotics tonight.\",\"expected\":\"{\\\"action\\\":\\\"prescribe\\\",\\\"rationale\\\":\\\"Start antibiotics now.\\\",\\\"confidence\\\":0.83}\"}",
+      "{\"id\":\"triage_003\",\"input\":\"Case ID: triage_003. Vague abdominal pain.\",\"expected\":\"{\\\"action\\\":\\\"refer\\\",\\\"rationale\\\":\\\"Schedule clinician review.\\\",\\\"confidence\\\":0.61}\"}",
+      "{\"id\":\"triage_004\",\"input\":\"Case ID: triage_004. Recurrent fatigue.\",\"expected\":\"{\\\"action\\\":\\\"order_test\\\",\\\"rationale\\\":\\\"Run diagnostics first.\\\",\\\"confidence\\\":0.88}\"}",
+      "",
+    ].join("\n"),
+    "utf-8"
+  );
+  await writeFile(
+    path.join(projectDirectory, "agentura.yaml"),
+    `
+version: 1
+
+agent:
+  type: cli
+  command: node ./agent.js
+  timeout_ms: 30000
+
+evals:
+  - name: triage_suite
+    type: golden_dataset
+    dataset: ./evals/triage.jsonl
+    scorer: exact_match
+    threshold: 1
+
+contracts:
+  - name: clinical_action_boundary
+    description: "Agent must stay in scope"
+    applies_to: [triage_suite]
+    failure_mode: hard_fail
+    assertions:
+      - type: allowed_values
+        field: output.action
+        values: [observe, refer, escalate, order_test]
+        message: "Action outside approved scope"
+      - type: required_fields
+        fields: [output.action, output.rationale, output.confidence]
+        message: "Missing required output fields"
+
+  - name: confidence_floor
+    description: "Low-confidence outputs require review"
+    applies_to: [triage_suite]
+    failure_mode: escalation_required
+    assertions:
+      - type: min_confidence
+        field: output.confidence
+        threshold: 0.75
+        message: "Confidence below floor"
+
+ci:
+  block_on_regression: true
+  regression_threshold: 0.05
+  compare_to: main
+  post_comment: true
+  fail_on_new_suite: false
+`.trimStart(),
+    "utf-8"
+  );
+
+  const result = await runCli(directory, [
+    "run",
+    "--local",
+    "--config",
+    "scenario/agentura.yaml",
+  ]);
+  const output = stripAnsi(result.output);
+
+  assert.equal(result.code, 1);
+  assert.match(output, /CONTRACTS/);
+  assert.match(output, /clinical_action_boundary → triage_suite \[hard_fail\]/);
+  assert.match(output, /allowed_values failed: output\.action = "prescribe"/);
+  assert.match(output, /confidence_floor → triage_suite \[escalation_required\]/);
+  assert.match(output, /Case: triage_003 — min_confidence: 0\.61 \(threshold: 0\.75\)/);
+
+  const auditEntries = await readJsonLines<{
+    contract_name: string;
+    eval_suite: string;
+    case_id: string;
+    failure_mode: string;
+    passed: boolean;
+  }>(path.join(projectDirectory, ".agentura", "manifest.jsonl"));
+
+  assert.equal(auditEntries.length, 8);
+  assert.deepEqual(
+    auditEntries.filter((entry) => entry.contract_name === "clinical_action_boundary" && entry.passed === false).map((entry) => entry.case_id),
+    ["triage_002"]
+  );
+  assert.deepEqual(
+    auditEntries.filter((entry) => entry.contract_name === "confidence_floor" && entry.passed === false).map((entry) => entry.case_id),
+    ["triage_003"]
+  );
+
+  const manifest = await readJson<{ suites: Array<{ name: string }> }>(
+    path.join(projectDirectory, ".agentura", "manifest.json")
+  );
+  assert.equal(manifest.suites[0]?.name, "triage_suite");
 });

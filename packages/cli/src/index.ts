@@ -77,6 +77,7 @@ program
 program
   .command("run")
   .description("Run evals locally")
+  .option("--config <path>", "Path to an agentura.yaml file")
   .option("--suite <name>", "Run only a specific suite")
   .option("--local", "Run fully offline without Agentura auth or cloud APIs")
   .option(

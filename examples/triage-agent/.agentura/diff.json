@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "timestamp": "2026-04-01T00:58:33.557Z",
+  "baselineFound": true,
+  "resetBaseline": false,
+  "baselinePath": "/Users/phoenix/Downloads/agentura-main/examples/triage-agent/.agentura/baseline.json",
+  "currentCommit": "d4e153cc64a52a49c2200e587d19dd11e29ed474",
+  "baselineCommit": "d4e153cc64a52a49c2200e587d19dd11e29ed474",
+  "baselineSaved": false,
+  "baselineError": null,
+  "summary": {
+    "regressions": 0,
+    "improvements": 0,
+    "newCases": 0,
+    "missingCases": 0
+  },
+  "suites": {
+    "triage_suite": {
+      "score": 1,
+      "baselineScore": 1,
+      "regressions": [],
+      "improvements": [],
+      "newCases": [],
+      "missingCases": []
+    }
+  }
+}

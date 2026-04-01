@@ -1,0 +1,17 @@
+version: 1
+agent:
+  type: http
+  endpoint: http://localhost:3001/api/agent
+  timeout_ms: 10000
+evals:
+  - name: accuracy
+    type: golden_dataset
+    dataset: ./evals/accuracy.jsonl
+    scorer: exact_match
+    threshold: 0.8
+ci:
+  block_on_regression: false
+  regression_threshold: 0.05
+  compare_to: main
+  post_comment: true
+  fail_on_new_suite: false

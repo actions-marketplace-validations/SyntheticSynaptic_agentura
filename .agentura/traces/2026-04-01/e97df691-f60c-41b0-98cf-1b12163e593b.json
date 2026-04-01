@@ -1,0 +1,57 @@
+{
+  "trace_id": "e97df691-f60c-41b0-98cf-1b12163e593b",
+  "run_id": "e7547998-2efd-4c0a-a911-1ca32620d028",
+  "agent_id": "consensus-cli",
+  "model": "consensus",
+  "model_version": "ollama:nemotron-3-nano,ollama:ZimaBlueAI/HuatuoGPT-o1-8B",
+  "prompt_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "started_at": "2026-04-01T03:47:27.631Z",
+  "completed_at": "2026-04-01T03:47:27.631Z",
+  "input": "Patient presents with chest pain and shortness of breath. What is the priority action?",
+  "output": "",
+  "tool_calls": [],
+  "token_usage": {
+    "input": 0,
+    "output": 0
+  },
+  "duration_ms": 0,
+  "flags": [
+    {
+      "type": "degraded_consensus",
+      "failed_models": [
+        "ollama:nemotron-3-nano",
+        "ollama:ZimaBlueAI/HuatuoGPT-o1-8B"
+      ],
+      "successful_models": []
+    },
+    {
+      "type": "consensus_disagreement",
+      "agreement_rate": 0
+    }
+  ],
+  "consensus_result": {
+    "winning_response": "",
+    "agreement_rate": 0,
+    "responses": [
+      {
+        "provider": "ollama",
+        "model": "nemotron-3-nano",
+        "response": null,
+        "latency_ms": 0,
+        "error": "Ollama is not running. Start it with: ollama serve"
+      },
+      {
+        "provider": "ollama",
+        "model": "ZimaBlueAI/HuatuoGPT-o1-8B",
+        "response": null,
+        "latency_ms": 0,
+        "error": "Ollama is not running. Start it with: ollama serve"
+      }
+    ],
+    "dissenting_models": [],
+    "flag": {
+      "type": "consensus_disagreement",
+      "agreement_rate": 0
+    }
+  }
+}

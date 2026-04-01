@@ -1,0 +1,57 @@
+{
+  "run_id": "e7547998-2efd-4c0a-a911-1ca32620d028",
+  "timestamp": "2026-04-01T01:06:20.617Z",
+  "commit": null,
+  "cli_version": "unknown",
+  "suites": [],
+  "traces": [
+    {
+      "trace_id": "fcb7cbf0-237c-47c0-9bfc-9e0928630fa8",
+      "run_id": "e7547998-2efd-4c0a-a911-1ca32620d028",
+      "agent_id": "consensus-cli",
+      "model": "consensus",
+      "model_version": "anthropic:claude-sonnet-4-6,openai:gpt-4o",
+      "started_at": "2026-04-01T01:06:20.614Z",
+      "duration_ms": 0,
+      "tool_call_count": 0,
+      "flag_types": [
+        "degraded_consensus",
+        "consensus_disagreement"
+      ],
+      "output_preview": "",
+      "path": ".agentura/traces/2026-04-01/fcb7cbf0-237c-47c0-9bfc-9e0928630fa8.json"
+    },
+    {
+      "trace_id": "ac848c64-2bc1-4147-80a4-74dd6be9cca2",
+      "run_id": "e7547998-2efd-4c0a-a911-1ca32620d028",
+      "agent_id": "consensus-cli",
+      "model": "consensus",
+      "model_version": "anthropic:claude-sonnet-4-6,openai:gpt-4o",
+      "started_at": "2026-04-01T03:26:40.678Z",
+      "duration_ms": 0,
+      "tool_call_count": 0,
+      "flag_types": [
+        "degraded_consensus",
+        "consensus_disagreement"
+      ],
+      "output_preview": "",
+      "path": ".agentura/traces/2026-04-01/ac848c64-2bc1-4147-80a4-74dd6be9cca2.json"
+    },
+    {
+      "trace_id": "e97df691-f60c-41b0-98cf-1b12163e593b",
+      "run_id": "e7547998-2efd-4c0a-a911-1ca32620d028",
+      "agent_id": "consensus-cli",
+      "model": "consensus",
+      "model_version": "ollama:nemotron-3-nano,ollama:ZimaBlueAI/HuatuoGPT-o1-8B",
+      "started_at": "2026-04-01T03:47:27.631Z",
+      "duration_ms": 0,
+      "tool_call_count": 0,
+      "flag_types": [
+        "degraded_consensus",
+        "consensus_disagreement"
+      ],
+      "output_preview": "",
+      "path": ".agentura/traces/2026-04-01/e97df691-f60c-41b0-98cf-1b12163e593b.json"
+    }
+  ]
+}

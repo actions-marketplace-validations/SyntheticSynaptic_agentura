@@ -1,0 +1,57 @@
+{
+  "trace_id": "fcb7cbf0-237c-47c0-9bfc-9e0928630fa8",
+  "run_id": "e7547998-2efd-4c0a-a911-1ca32620d028",
+  "agent_id": "consensus-cli",
+  "model": "consensus",
+  "model_version": "anthropic:claude-sonnet-4-6,openai:gpt-4o",
+  "prompt_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "started_at": "2026-04-01T01:06:20.614Z",
+  "completed_at": "2026-04-01T01:06:20.614Z",
+  "input": "Patient presents with chest pain, shortness of breath. What is the priority action?",
+  "output": "",
+  "tool_calls": [],
+  "token_usage": {
+    "input": 0,
+    "output": 0
+  },
+  "duration_ms": 0,
+  "flags": [
+    {
+      "type": "degraded_consensus",
+      "failed_models": [
+        "anthropic:claude-sonnet-4-6",
+        "openai:gpt-4o"
+      ],
+      "successful_models": []
+    },
+    {
+      "type": "consensus_disagreement",
+      "agreement_rate": 0
+    }
+  ],
+  "consensus_result": {
+    "winning_response": "",
+    "agreement_rate": 0,
+    "responses": [
+      {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "response": null,
+        "latency_ms": 0,
+        "error": "Missing ANTHROPIC_API_KEY"
+      },
+      {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "response": null,
+        "latency_ms": 0,
+        "error": "Missing OPENAI_API_KEY"
+      }
+    ],
+    "dissenting_models": [],
+    "flag": {
+      "type": "consensus_disagreement",
+      "agreement_rate": 0
+    }
+  }
+}

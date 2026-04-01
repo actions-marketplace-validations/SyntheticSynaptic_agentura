@@ -1,0 +1,18 @@
+{
+  "run_id": "a47007b0-8438-4884-a282-6d8d0cf4178f",
+  "timestamp": "2026-04-01T00:58:33.557Z",
+  "commit": "d4e153cc64a52a49c2200e587d19dd11e29ed474",
+  "cli_version": "0.3.1",
+  "suites": [
+    {
+      "name": "triage_suite",
+      "strategy": "golden_dataset",
+      "scorer": "exact_match",
+      "dataset_hash": "sha256:5c1f0548073047d9a89ad57bb019ce638bf43204e6f2dfac8eca093a358550c3",
+      "case_count": 15,
+      "score": 1,
+      "passed": true,
+      "judge_model": null
+    }
+  ]
+}

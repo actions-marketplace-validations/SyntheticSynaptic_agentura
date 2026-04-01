@@ -218,8 +218,11 @@ function toEvalCase(value: unknown, filePath: string, lineNumber: number): EvalC
   };
 }
 
-export async function loadDataset(filePath: string): Promise<EvalCase[]> {
-  const absolutePath = path.resolve(process.cwd(), filePath);
+export async function loadDataset(
+  filePath: string,
+  baseDir = process.cwd()
+): Promise<EvalCase[]> {
+  const absolutePath = path.resolve(baseDir, filePath);
   let raw: string;
 
   try {

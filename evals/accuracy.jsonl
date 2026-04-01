@@ -1,0 +1,3 @@
+{"input":"what is 2+2","expected":"4"}
+{"input":"what is the capital of France","expected":"Paris"}
+{"input":"what color is the sky","expected":"blue"}

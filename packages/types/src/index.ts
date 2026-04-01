@@ -94,11 +94,58 @@ export interface ConversationAssistantTurn {
 
 export type ConversationTurn = ConversationUserTurn | ConversationAssistantTurn;
 
+export type ContractFailureMode =
+  | "hard_fail"
+  | "soft_fail"
+  | "escalation_required"
+  | "retry";
+
+export interface AllowedValuesContractAssertion {
+  type: "allowed_values";
+  field: string;
+  values: string[];
+  message: string;
+}
+
+export interface ForbiddenToolsContractAssertion {
+  type: "forbidden_tools";
+  tools: string[];
+  message: string;
+}
+
+export interface RequiredFieldsContractAssertion {
+  type: "required_fields";
+  fields: string[];
+  message: string;
+}
+
+export interface MinConfidenceContractAssertion {
+  type: "min_confidence";
+  field: string;
+  threshold: number;
+  message: string;
+}
+
+export type ContractAssertionConfig =
+  | AllowedValuesContractAssertion
+  | ForbiddenToolsContractAssertion
+  | RequiredFieldsContractAssertion
+  | MinConfidenceContractAssertion;
+
+export interface ContractConfig {
+  name: string;
+  description: string;
+  applies_to: string[];
+  failure_mode: ContractFailureMode;
+  assertions: ContractAssertionConfig[];
+}
+
 export interface AgenturaConfig {
   version: number;
   agent: AgentConfig;
   evals: EvalSuiteConfig[];
   ci: CIConfig;
+  contracts?: ContractConfig[];
   consensus?: ConsensusConfig;
   drift?: DriftConfig;
 }

@@ -21,17 +21,25 @@ import {
 import {
   callCliAgent,
   callHttpAgent,
+  evaluateContractCase,
   formatLlmJudgeProviderLogMessage,
   callSdkAgent,
   getCaseInput,
+  isConversationCase,
   NO_LLM_JUDGE_API_KEY_WARNING,
   resolveLlmJudgeProvider,
   runGoldenDataset,
+  runConversationCase,
   runLlmJudge,
   runPerformance,
   runToolUse,
 } from "@agentura/eval-runner";
-import type { ResolvedLlmJudgeProvider } from "@agentura/eval-runner";
+import type {
+  ContractAssertionEvaluation,
+  ContractCaseEvaluation,
+  EffectiveContractFailureMode,
+  ResolvedLlmJudgeProvider,
+} from "@agentura/eval-runner";
 import type {
   AgentFunction,
   ConsensusModelConfig,
@@ -60,6 +68,7 @@ import {
 } from "./report";
 
 export interface LocalRunCommandOptions {
+  config?: string;
   suite?: string;
   verbose?: boolean;
   allowFallback?: boolean;
@@ -191,6 +200,44 @@ interface EvalRunManifest {
   };
 }
 
+interface ContractFailureRecord {
+  caseId: string;
+  caseIndex: number;
+  evaluation: ContractCaseEvaluation;
+  attempts: number;
+}
+
+interface ContractRunSummary {
+  contractName: string;
+  suiteName: string;
+  description: string;
+  configuredFailureMode: ParsedContract["failure_mode"];
+  effectiveFailureMode: EffectiveContractFailureMode;
+  totalCases: number;
+  passedCases: number;
+  failedCases: ContractFailureRecord[];
+}
+
+interface ContractAuditManifestEntry {
+  type: "contract_result";
+  run_id: string;
+  timestamp: string;
+  contract_name: string;
+  contract_version: string;
+  eval_suite: string;
+  case_id: string;
+  failure_mode: EffectiveContractFailureMode;
+  passed: boolean;
+  assertions: Array<{
+    type: ContractAssertionEvaluation["type"];
+    passed: boolean;
+    field?: string;
+    observed: JsonValue | null;
+    expected: string;
+    message: string;
+  }>;
+}
+
 interface TraceStore {
   record: (trace: AgentTrace) => void;
   claim: (caseResult: EvalCaseResult) => AgentTrace | null;
@@ -219,7 +266,9 @@ const TRACE_FAILURE_DIR = path.join(LOCAL_STATE_DIR, "traces", "eval-failures");
 const BASELINE_FILE_NAME = "baseline.json";
 const DIFF_FILE_NAME = "diff.json";
 const MANIFEST_FILE_NAME = "manifest.json";
+const AUDIT_MANIFEST_FILE_NAME = "manifest.jsonl";
 const BASELINE_VERSION = 1 as const;
+const CONTRACT_RETRY_ATTEMPTS = 3;
 const require = createRequire(__filename);
 
 function getCliVersion(): string {
@@ -381,6 +430,54 @@ const driftConfigSchema = z.object({
   thresholds: driftThresholdsSchema.default(DEFAULT_DRIFT_THRESHOLDS),
 });
 
+const allowedValuesAssertionSchema = z.object({
+  type: z.literal("allowed_values"),
+  field: z.string().min(1),
+  values: z.array(z.string().min(1)).min(1),
+  message: z.string().min(1),
+});
+
+const forbiddenToolsAssertionSchema = z.object({
+  type: z.literal("forbidden_tools"),
+  tools: z.array(z.string().min(1)).min(1),
+  message: z.string().min(1),
+});
+
+const requiredFieldsAssertionSchema = z.object({
+  type: z.literal("required_fields"),
+  fields: z.array(z.string().min(1)).min(1),
+  message: z.string().min(1),
+});
+
+const minConfidenceAssertionSchema = z.object({
+  type: z.literal("min_confidence"),
+  field: z.string().min(1),
+  threshold: z.number().min(0).max(1),
+  message: z.string().min(1),
+});
+
+const contractSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().min(1),
+  applies_to: z.array(z.string().min(1)).min(1),
+  failure_mode: z.enum([
+    "hard_fail",
+    "soft_fail",
+    "escalation_required",
+    "retry",
+  ]),
+  assertions: z
+    .array(
+      z.union([
+        allowedValuesAssertionSchema,
+        forbiddenToolsAssertionSchema,
+        requiredFieldsAssertionSchema,
+        minConfidenceAssertionSchema,
+      ])
+    )
+    .min(1),
+});
+
 const ciSchema = z
   .object({
     block_on_regression: z.boolean().default(false),
@@ -410,8 +507,23 @@ const configSchema = z.object({
     ])
   ),
   ci: ciSchema,
+  contracts: z.array(contractSchema).default([]),
   consensus: consensusConfigSchema.optional(),
   drift: driftConfigSchema.optional(),
+}).superRefine((value, ctx) => {
+  const suiteNames = new Set(value.evals.map((suite) => suite.name));
+
+  value.contracts.forEach((contract, contractIndex) => {
+    contract.applies_to.forEach((suiteName, suiteIndex) => {
+      if (!suiteNames.has(suiteName)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `references unknown eval suite "${suiteName}"`,
+          path: ["contracts", contractIndex, "applies_to", suiteIndex],
+        });
+      }
+    });
+  });
 });
 
 const baselineCaseSnapshotSchema = z.object({
@@ -441,6 +553,7 @@ const baselineSnapshotSchema = z.object({
 
 type ParsedConfig = z.infer<typeof configSchema>;
 type ParsedSuite = ParsedConfig["evals"][number];
+type ParsedContract = ParsedConfig["contracts"][number];
 type ParsedPerformanceSuite = Extract<ParsedSuite, { type: "performance" }>;
 
 function getErrorMessage(error: unknown): string {
@@ -644,6 +757,10 @@ async function ensureLocalStateDir(cwd: string): Promise<string> {
 
 async function writeJsonFile(filePath: string, value: unknown): Promise<void> {
   await fs.writeFile(filePath, JSON.stringify(value, null, 2) + "\n", "utf-8");
+}
+
+async function appendJsonLine(filePath: string, value: unknown): Promise<void> {
+  await fs.appendFile(filePath, `${JSON.stringify(value)}\n`, "utf-8");
 }
 
 async function writeBaselineSnapshot(cwd: string, snapshot: BaselineSnapshot): Promise<void> {
@@ -1362,6 +1479,7 @@ function buildEvalRunAuditRecord(options: {
   completedSuites: CompletedSuiteRun[];
   traceStore: TraceStore;
   diffReport: DiffReport;
+  overallPassed: boolean;
 }): EvalRunAuditRecord {
   const traces = collectAuditTraces(
     options.runId,
@@ -1387,9 +1505,7 @@ function buildEvalRunAuditRecord(options: {
             ? options.agentConfig.command ?? null
             : options.agentConfig.module ?? null,
     },
-    overall_passed: options.completedSuites.every((suiteRun) =>
-      isSuitePassed(suiteRun.suite, suiteRun.result)
-    ),
+    overall_passed: options.overallPassed,
     model_names: observed.modelNames,
     model_versions: observed.modelVersions,
     prompt_hashes: observed.promptHashes,
@@ -1418,6 +1534,237 @@ function buildEvalRunAuditRecord(options: {
     }),
     traces,
   };
+}
+
+function formatContractObservedValue(value: JsonValue | null): string {
+  if (value === null) {
+    return "(missing)";
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value.toFixed(2);
+  }
+
+  return JSON.stringify(value);
+}
+
+function formatContractFailureLine(assertion: ContractAssertionEvaluation): string {
+  switch (assertion.type) {
+    case "allowed_values":
+      return `${assertion.type} failed: ${assertion.field ?? "field"} = ${formatContractObservedValue(assertion.observed)} (allowed: ${assertion.expected})`;
+    case "forbidden_tools": {
+      const observedTools =
+        Array.isArray(assertion.observed) && assertion.observed.length > 0
+          ? assertion.observed.join(", ")
+          : "(none)";
+      return `${assertion.type} failed: ${observedTools} (forbidden: ${assertion.expected})`;
+    }
+    case "required_fields": {
+      const missingFields =
+        Array.isArray(assertion.observed) && assertion.observed.length > 0
+          ? assertion.observed.join(", ")
+          : assertion.expected;
+      return `${assertion.type} failed: missing ${missingFields}`;
+    }
+    case "min_confidence":
+      return `${assertion.type}: ${formatContractObservedValue(assertion.observed)} (threshold: ${assertion.expected})`;
+  }
+}
+
+async function rerunContractCase(
+  testCase: EvalCase,
+  agentFn: AgentFunction
+): Promise<{
+  output: string | null;
+  toolCalls?: ToolCall[];
+}> {
+  if (isConversationCase(testCase)) {
+    const conversationRun = await runConversationCase(testCase, agentFn);
+    const scoredTurns = conversationRun.turns.filter((turn) => turn.scored);
+    const finalTurn = scoredTurns[scoredTurns.length - 1] ?? conversationRun.turns[conversationRun.turns.length - 1];
+
+    return {
+      output: finalTurn?.output ?? null,
+    };
+  }
+
+  const result = await agentFn(getCaseInput(testCase));
+  return {
+    output: result.output,
+    toolCalls: result.tool_calls,
+  };
+}
+
+async function evaluateContractsForSuites(params: {
+  contracts: ParsedContract[];
+  completedSuites: CompletedSuiteRun[];
+  agentFn: AgentFunction;
+}): Promise<{
+  summaries: ContractRunSummary[];
+  auditEntries: ContractAuditManifestEntry[];
+}> {
+  const summaries: ContractRunSummary[] = [];
+  const auditEntries: ContractAuditManifestEntry[] = [];
+
+  for (const contract of params.contracts) {
+    for (const suiteName of contract.applies_to) {
+      const suiteRun = params.completedSuites.find((candidate) => candidate.suite.name === suiteName);
+      if (!suiteRun) {
+        continue;
+      }
+
+      const failedCases: ContractFailureRecord[] = [];
+
+      for (const caseResult of suiteRun.result.cases) {
+        const testCase = suiteRun.cases[caseResult.caseIndex];
+        const caseId = formatAuditCaseId(suiteRun.suite.name, testCase, caseResult.caseIndex);
+        let evaluation = evaluateContractCase(contract, {
+          output: caseResult.output,
+          toolCalls: caseResult.tool_calls,
+        });
+        let attempts = 1;
+
+        if (contract.failure_mode === "retry" && !evaluation.passed && testCase) {
+          for (let retryIndex = 0; retryIndex < CONTRACT_RETRY_ATTEMPTS && !evaluation.passed; retryIndex += 1) {
+            const rerun = await rerunContractCase(testCase, params.agentFn);
+            evaluation = evaluateContractCase(contract, {
+              output: rerun.output,
+              toolCalls: rerun.toolCalls,
+            });
+            attempts += 1;
+          }
+        }
+
+        auditEntries.push({
+          type: "contract_result",
+          run_id: "",
+          timestamp: "",
+          contract_name: contract.name,
+          contract_version: CLI_VERSION,
+          eval_suite: suiteRun.suite.name,
+          case_id: caseId,
+          failure_mode:
+            contract.failure_mode === "retry" ? "hard_fail" : contract.failure_mode,
+          passed: evaluation.passed,
+          assertions: evaluation.assertions.map((assertion) => ({
+            type: assertion.type,
+            passed: assertion.passed,
+            field: assertion.field,
+            observed: assertion.observed,
+            expected: assertion.expected,
+            message: assertion.message,
+          })),
+        });
+
+        if (!evaluation.passed) {
+          failedCases.push({
+            caseId,
+            caseIndex: caseResult.caseIndex,
+            evaluation,
+            attempts,
+          });
+        }
+      }
+
+      summaries.push({
+        contractName: contract.name,
+        suiteName: suiteRun.suite.name,
+        description: contract.description,
+        configuredFailureMode: contract.failure_mode,
+        effectiveFailureMode:
+          contract.failure_mode === "retry" ? "hard_fail" : contract.failure_mode,
+        totalCases: suiteRun.result.cases.length,
+        passedCases: suiteRun.result.cases.length - failedCases.length,
+        failedCases,
+      });
+    }
+  }
+
+  return { summaries, auditEntries };
+}
+
+function printContractsSection(summaries: ContractRunSummary[]): void {
+  if (summaries.length === 0) {
+    return;
+  }
+
+  console.log("CONTRACTS");
+  console.log("");
+
+  for (const summary of summaries) {
+    if (summary.failedCases.length === 0) {
+      console.log(
+        `✅  ${summary.contractName} → ${summary.suiteName} (${String(summary.passedCases)}/${String(summary.totalCases)} cases passed)`
+      );
+      continue;
+    }
+
+    const headerIcon =
+      summary.effectiveFailureMode === "hard_fail" ? "❌" : "⚠️";
+    console.log(
+      `${headerIcon}  ${summary.contractName} → ${summary.suiteName} [${summary.effectiveFailureMode}]`
+    );
+
+    if (summary.effectiveFailureMode === "escalation_required") {
+      console.log(
+        `    ${String(summary.failedCases.length)} ${pluralize(summary.failedCases.length, "case")} require clinical review before deployment`
+      );
+    }
+
+    for (const failedCase of summary.failedCases) {
+      const failedAssertions = failedCase.evaluation.assertions.filter((assertion) => !assertion.passed);
+
+      if (
+        summary.effectiveFailureMode === "escalation_required" &&
+        failedAssertions.length === 1
+      ) {
+        console.log(
+          `    Case: ${failedCase.caseId} — ${formatContractFailureLine(failedAssertions[0] as ContractAssertionEvaluation)}`
+        );
+        continue;
+      }
+
+      console.log(`    Case: ${failedCase.caseId}`);
+      failedAssertions.forEach((assertion) => {
+        console.log(`    ${formatContractFailureLine(assertion)}`);
+      });
+    }
+
+    if (summary.effectiveFailureMode === "hard_fail") {
+      console.log("    → Merge blocked");
+    }
+  }
+
+  console.log("");
+}
+
+function countBlockingContractFailures(summaries: ContractRunSummary[]): number {
+  return summaries.filter(
+    (summary) =>
+      summary.effectiveFailureMode === "hard_fail" && summary.failedCases.length > 0
+  ).length;
+}
+
+async function writeContractAuditManifest(
+  cwd: string,
+  runId: string,
+  entries: ContractAuditManifestEntry[],
+  timestamp: string
+): Promise<void> {
+  if (entries.length === 0) {
+    return;
+  }
+
+  await ensureLocalStateDir(cwd);
+  const filePath = getLocalStatePath(cwd, AUDIT_MANIFEST_FILE_NAME);
+
+  for (const entry of entries) {
+    await appendJsonLine(filePath, {
+      ...entry,
+      run_id: runId,
+      timestamp,
+    });
+  }
 }
 
 function renderTable(rows: LocalSuiteSummaryRow[]): string {
@@ -1476,15 +1823,19 @@ function renderTable(rows: LocalSuiteSummaryRow[]): string {
   return lines.join("\n");
 }
 
-async function loadAgenturaConfig(cwd: string): Promise<ParsedConfig> {
-  const configPath = path.resolve(cwd, "agentura.yaml");
+function resolveConfigPath(cwd: string, configuredPath?: string): string {
+  return path.resolve(cwd, configuredPath ?? "agentura.yaml");
+}
+
+async function loadAgenturaConfig(configPath: string): Promise<ParsedConfig> {
+  const configLabel = path.basename(configPath);
 
   let raw: string;
   try {
     raw = await fs.readFile(configPath, "utf-8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new Error("agentura.yaml not found. Run 'agentura init' first.");
+      throw new Error(`${configLabel} not found. Run 'agentura init' first.`);
     }
 
     throw error;
@@ -1494,14 +1845,14 @@ async function loadAgenturaConfig(cwd: string): Promise<ParsedConfig> {
   try {
     parsedYaml = yaml.load(raw);
   } catch (error) {
-    throw new Error(`Invalid agentura.yaml: ${getErrorMessage(error)}`);
+    throw new Error(`Invalid ${configLabel}: ${getErrorMessage(error)}`);
   }
 
   const parsed = configSchema.safeParse(parsedYaml);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     const issuePath = issue?.path?.join(".") ?? "root";
-    throw new Error(`Invalid agentura.yaml: ${issuePath} ${issue?.message ?? ""}`.trim());
+    throw new Error(`Invalid ${configLabel}: ${issuePath} ${issue?.message ?? ""}`.trim());
   }
 
   return parsed.data;
@@ -1659,7 +2010,7 @@ async function runSuite(
   suite: ParsedSuite,
   agentFn: AgentFunction,
   judge: ResolvedLlmJudgeProvider | null,
-  cwd: string,
+  projectRoot: string,
   options: LocalRunCommandOptions
 ): Promise<{
   cases: EvalCase[];
@@ -1668,8 +2019,8 @@ async function runSuite(
   caseCount: number;
   result: SuiteRunResult | SkippedSuiteResult;
 }> {
-  const cases = await loadDataset(suite.dataset);
-  const datasetHash = await fingerprintDataset(suite.dataset, cwd);
+  const cases = await loadDataset(suite.dataset, projectRoot);
+  const datasetHash = await fingerprintDataset(suite.dataset, projectRoot);
   const datasetPath = suite.dataset;
   const caseCount = cases.length;
 
@@ -1784,7 +2135,7 @@ async function runSuite(
       };
     }
 
-    const rubric = await loadRubric(suite.rubric);
+    const rubric = await loadRubric(suite.rubric, projectRoot);
     return {
       cases,
       datasetHash,
@@ -2080,12 +2431,14 @@ function printDriftCheckSummary(
 export async function runLocalCommand(options: LocalRunCommandOptions = {}): Promise<number> {
   const cwd = process.cwd();
   const startedAt = performance.now();
-  const config = await loadAgenturaConfig(cwd);
-  const baselinePath = getLocalStatePath(cwd, BASELINE_FILE_NAME);
+  const configPath = resolveConfigPath(cwd, options.config);
+  const projectRoot = path.dirname(configPath);
+  const config = await loadAgenturaConfig(configPath);
+  const baselinePath = getLocalStatePath(projectRoot, BASELINE_FILE_NAME);
   const runId = randomUUID();
   const agentId = inferAgentId(config.agent);
   const traceStore = createTraceStore();
-  const agentFn = createLocalAgentFunction(config.agent, cwd, {
+  const agentFn = createLocalAgentFunction(config.agent, projectRoot, {
     runId,
     agentId,
     recordTrace: (trace) => {
@@ -2115,7 +2468,7 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
 
   for (const suite of suites) {
     console.log(chalk.gray(`  Running suite: ${suite.name} (${suite.type})...`));
-    const suiteExecution = await runSuite(suite, agentFn, judge, cwd, options);
+    const suiteExecution = await runSuite(suite, agentFn, judge, projectRoot, options);
     const summaryRow = toSummaryRow(suite, suiteExecution.result);
     completedRows.push(summaryRow);
 
@@ -2150,6 +2503,14 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
   console.log(renderTable(completedRows));
   console.log("");
 
+  const { summaries: contractSummaries, auditEntries: contractAuditEntries } =
+    await evaluateContractsForSuites({
+      contracts: config.contracts,
+      completedSuites,
+      agentFn,
+    });
+  printContractsSection(contractSummaries);
+
   const lowAgreementWarnings = collectLowAgreementWarnings(
     completedSuites.map((suiteRun) => suiteRun.result)
   );
@@ -2158,12 +2519,12 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
     console.log("");
   }
 
-  const currentCommit = await getGitCommitSha(cwd);
+  const currentCommit = await getGitCommitSha(projectRoot);
   const currentSnapshot = buildBaselineSnapshot(completedSuites, currentCommit);
   const manifest = buildEvalRunManifest(runId, completedSuites, currentCommit);
   const baselineReadResult = options.resetBaseline
     ? { snapshot: null, error: null }
-    : await readBaselineSnapshot(cwd);
+    : await readBaselineSnapshot(projectRoot);
   const datasetChanges = baselineReadResult.snapshot
     ? collectDatasetChanges(baselineReadResult.snapshot, currentSnapshot)
     : [];
@@ -2186,7 +2547,7 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
   }
 
   if (options.resetBaseline) {
-    await writeBaselineSnapshot(cwd, currentSnapshot);
+    await writeBaselineSnapshot(projectRoot, currentSnapshot);
     diffReport = {
       ...diffReport,
       baselineSaved: true,
@@ -2194,7 +2555,7 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
     console.log("Baseline reset with current run results.");
     console.log("");
   } else if (!baselineReadResult.snapshot) {
-    await writeBaselineSnapshot(cwd, currentSnapshot);
+    await writeBaselineSnapshot(projectRoot, currentSnapshot);
     diffReport = {
       ...diffReport,
       baselineSaved: true,
@@ -2226,12 +2587,12 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
       chalk.gray(`Running drift check against reference: ${config.drift.reference}`)
     );
     driftResult = await diffAgainstReference({
-      cwd,
+      cwd: projectRoot,
       label: config.drift.reference,
       thresholds: config.drift.thresholds,
       agentFn,
     });
-    await appendDriftHistory(cwd, driftResult);
+    await appendDriftHistory(projectRoot, driftResult);
     printDriftCheckSummary(driftResult, config.drift.thresholds);
   }
 
@@ -2246,9 +2607,34 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
     };
   }
 
-  await writeEvalRunManifest(cwd, manifest);
+  await writeEvalRunManifest(projectRoot, manifest);
+  await writeContractAuditManifest(
+    projectRoot,
+    runId,
+    contractAuditEntries,
+    manifest.timestamp
+  );
+  const failedCaseTraceCount = await writeFailedCaseTraces(
+    projectRoot,
+    runId,
+    agentId,
+    completedSuites,
+    traceStore
+  );
+
+  const failedSuites = completedRows.filter((row) => !row.passed && !row.skipped).length;
+  const blockingContractFailures = countBlockingContractFailures(contractSummaries);
+  const lockedDatasetChanges = options.locked ? datasetChanges.length : 0;
+  const driftBreaches = driftResult?.threshold_breaches.length ?? 0;
+  const exitCode =
+    failedSuites > 0 ||
+    blockingContractFailures > 0 ||
+    lockedDatasetChanges > 0 ||
+    driftBreaches > 0
+      ? 1
+      : 0;
   await writeEvalRunAuditRecord(
-    cwd,
+    projectRoot,
     buildEvalRunAuditRecord({
       runId,
       runTimestamp: manifest.timestamp,
@@ -2258,21 +2644,9 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
       completedSuites,
       traceStore,
       diffReport,
+      overallPassed: exitCode === 0,
     })
   );
-  const failedCaseTraceCount = await writeFailedCaseTraces(
-    cwd,
-    runId,
-    agentId,
-    completedSuites,
-    traceStore
-  );
-
-  const failedSuites = completedRows.filter((row) => !row.passed && !row.skipped).length;
-  const lockedDatasetChanges = options.locked ? datasetChanges.length : 0;
-  const driftBreaches = driftResult?.threshold_breaches.length ?? 0;
-  const exitCode =
-    failedSuites > 0 || lockedDatasetChanges > 0 || driftBreaches > 0 ? 1 : 0;
   if (lockedDatasetChanges > 0) {
     console.log(
       chalk.red(
@@ -2287,6 +2661,16 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
           driftBreaches,
           "threshold"
         )}.`
+      )
+    );
+  }
+  if (blockingContractFailures > 0) {
+    console.log(
+      chalk.red(
+        `${String(blockingContractFailures)} blocking ${pluralize(
+          blockingContractFailures,
+          "contract"
+        )} failed.`
       )
     );
   }
@@ -2305,7 +2689,7 @@ export async function runLocalCommand(options: LocalRunCommandOptions = {}): Pro
   }
 
   if (!process.stdout.isTTY) {
-    await writeDiffReport(cwd, diffReport);
+    await writeDiffReport(projectRoot, diffReport);
   }
 
   console.log(chalk.gray(`Completed in ${formatDurationMs(performance.now() - startedAt)}.`));

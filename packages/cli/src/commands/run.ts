@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { runLocalCommand } from "../lib/local-run";
 
 interface RunCommandOptions {
+  config?: string;
   suite?: string;
   verbose?: boolean;
   local?: boolean;
