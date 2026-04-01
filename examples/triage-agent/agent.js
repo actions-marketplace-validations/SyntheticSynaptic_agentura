@@ -99,3 +99,12 @@ process.stdin.on("end", () => {
 
   process.stdout.write(JSON.stringify(CASES[caseId]));
 });
+
+// SDK export for reference snapshot and trace commands
+export default async function(input) {
+  const caseId = readCaseId(input);
+  if (!caseId || !CASES[caseId]) {
+    throw new Error(`Unknown triage case: ${caseId ?? "missing_case_id"}`);
+  }
+  return JSON.stringify(CASES[caseId]);
+}

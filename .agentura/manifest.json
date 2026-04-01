@@ -1,57 +1,59 @@
 {
-  "run_id": "e7547998-2efd-4c0a-a911-1ca32620d028",
-  "timestamp": "2026-04-01T01:06:20.617Z",
-  "commit": null,
-  "cli_version": "unknown",
-  "suites": [],
+  "run_id": "5ad61d57-b904-4f0c-8871-ee0175e19cdc",
+  "timestamp": "2026-04-01T04:13:44.755Z",
+  "commit": "17319846b7d0336f866b9c0040c8b1c4cd09a097",
+  "cli_version": "0.4.0",
+  "suites": [
+    {
+      "name": "accuracy",
+      "strategy": "golden_dataset",
+      "scorer": "exact_match",
+      "dataset_hash": "sha256:81129e1a8b06bd7a5f9f4bbe140df64bf81c8226778a36eeec96b5ae178808e6",
+      "case_count": 3,
+      "score": 0,
+      "passed": false,
+      "judge_model": null
+    }
+  ],
   "traces": [
     {
-      "trace_id": "fcb7cbf0-237c-47c0-9bfc-9e0928630fa8",
-      "run_id": "e7547998-2efd-4c0a-a911-1ca32620d028",
-      "agent_id": "consensus-cli",
-      "model": "consensus",
-      "model_version": "anthropic:claude-sonnet-4-6,openai:gpt-4o",
-      "started_at": "2026-04-01T01:06:20.614Z",
+      "trace_id": "10bc657e-ac3e-4b19-832b-626351aecd2a",
+      "run_id": "5ad61d57-b904-4f0c-8871-ee0175e19cdc",
+      "agent_id": "/api/agent",
+      "model": "unknown",
+      "model_version": "unknown",
+      "started_at": "2026-04-01T04:13:44.756Z",
       "duration_ms": 0,
       "tool_call_count": 0,
-      "flag_types": [
-        "degraded_consensus",
-        "consensus_disagreement"
-      ],
+      "flag_types": [],
       "output_preview": "",
-      "path": ".agentura/traces/2026-04-01/fcb7cbf0-237c-47c0-9bfc-9e0928630fa8.json"
+      "path": ".agentura/traces/eval-failures/2026-04-01/10bc657e-ac3e-4b19-832b-626351aecd2a.json"
     },
     {
-      "trace_id": "ac848c64-2bc1-4147-80a4-74dd6be9cca2",
-      "run_id": "e7547998-2efd-4c0a-a911-1ca32620d028",
-      "agent_id": "consensus-cli",
-      "model": "consensus",
-      "model_version": "anthropic:claude-sonnet-4-6,openai:gpt-4o",
-      "started_at": "2026-04-01T03:26:40.678Z",
+      "trace_id": "5f79dd8f-77cf-41ff-bc71-48f8b9b778e1",
+      "run_id": "5ad61d57-b904-4f0c-8871-ee0175e19cdc",
+      "agent_id": "/api/agent",
+      "model": "unknown",
+      "model_version": "unknown",
+      "started_at": "2026-04-01T04:13:44.757Z",
       "duration_ms": 0,
       "tool_call_count": 0,
-      "flag_types": [
-        "degraded_consensus",
-        "consensus_disagreement"
-      ],
+      "flag_types": [],
       "output_preview": "",
-      "path": ".agentura/traces/2026-04-01/ac848c64-2bc1-4147-80a4-74dd6be9cca2.json"
+      "path": ".agentura/traces/eval-failures/2026-04-01/5f79dd8f-77cf-41ff-bc71-48f8b9b778e1.json"
     },
     {
-      "trace_id": "e97df691-f60c-41b0-98cf-1b12163e593b",
-      "run_id": "e7547998-2efd-4c0a-a911-1ca32620d028",
-      "agent_id": "consensus-cli",
-      "model": "consensus",
-      "model_version": "ollama:nemotron-3-nano,ollama:ZimaBlueAI/HuatuoGPT-o1-8B",
-      "started_at": "2026-04-01T03:47:27.631Z",
+      "trace_id": "a6a76cfd-75de-4772-be1a-94e3b9fac665",
+      "run_id": "5ad61d57-b904-4f0c-8871-ee0175e19cdc",
+      "agent_id": "/api/agent",
+      "model": "unknown",
+      "model_version": "unknown",
+      "started_at": "2026-04-01T04:13:44.758Z",
       "duration_ms": 0,
       "tool_call_count": 0,
-      "flag_types": [
-        "degraded_consensus",
-        "consensus_disagreement"
-      ],
+      "flag_types": [],
       "output_preview": "",
-      "path": ".agentura/traces/2026-04-01/e97df691-f60c-41b0-98cf-1b12163e593b.json"
+      "path": ".agentura/traces/eval-failures/2026-04-01/a6a76cfd-75de-4772-be1a-94e3b9fac665.json"
     }
   ]
 }

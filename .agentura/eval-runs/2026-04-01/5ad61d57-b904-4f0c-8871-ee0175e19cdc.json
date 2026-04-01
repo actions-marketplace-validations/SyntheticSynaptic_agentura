@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "run_id": "5ad61d57-b904-4f0c-8871-ee0175e19cdc",
+  "timestamp": "2026-04-01T04:13:44.755Z",
+  "commit": "17319846b7d0336f866b9c0040c8b1c4cd09a097",
+  "agent": {
+    "id": "/api/agent",
+    "type": "http",
+    "target": "http://localhost:3001/api/agent"
+  },
+  "overall_passed": false,
+  "model_names": [],
+  "model_versions": [],
+  "prompt_hashes": [
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  ],
+  "suites": [
+    {
+      "name": "accuracy",
+      "strategy": "golden_dataset",
+      "case_count": 3,
+      "pass_rate": 0,
+      "score": 0,
+      "passed": false,
+      "threshold": 0.8,
+      "dataset_hash": "sha256:81129e1a8b06bd7a5f9f4bbe140df64bf81c8226778a36eeec96b5ae178808e6",
+      "dataset_path": "./evals/accuracy.jsonl",
+      "baseline_delta": null
+    }
+  ],
+  "traces": [
+    {
+      "trace_id": "12a1490b-32a9-4286-8c11-b8f6fcc269e7",
+      "suite_name": "accuracy",
+      "case_id": "accuracy:case_1",
+      "passed": false,
+      "input": "what is 2+2",
+      "output": "",
+      "tools_called": [],
+      "flags": [],
+      "duration_ms": 0,
+      "started_at": "2026-04-01T04:13:44.758Z",
+      "model": "unknown",
+      "model_version": "unknown",
+      "prompt_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "consensus_result": null,
+      "source": "eval-run"
+    },
+    {
+      "trace_id": "07cf366d-ff03-4bac-abf6-db277f1a8335",
+      "suite_name": "accuracy",
+      "case_id": "accuracy:case_2",
+      "passed": false,
+      "input": "what is the capital of France",
+      "output": "",
+      "tools_called": [],
+      "flags": [],
+      "duration_ms": 0,
+      "started_at": "2026-04-01T04:13:44.758Z",
+      "model": "unknown",
+      "model_version": "unknown",
+      "prompt_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "consensus_result": null,
+      "source": "eval-run"
+    },
+    {
+      "trace_id": "59ba8afa-3e5f-4182-b0b3-7245c1a3ac1e",
+      "suite_name": "accuracy",
+      "case_id": "accuracy:case_3",
+      "passed": false,
+      "input": "what color is the sky",
+      "output": "",
+      "tools_called": [],
+      "flags": [],
+      "duration_ms": 0,
+      "started_at": "2026-04-01T04:13:44.758Z",
+      "model": "unknown",
+      "model_version": "unknown",
+      "prompt_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "consensus_result": null,
+      "source": "eval-run"
+    }
+  ]
+}

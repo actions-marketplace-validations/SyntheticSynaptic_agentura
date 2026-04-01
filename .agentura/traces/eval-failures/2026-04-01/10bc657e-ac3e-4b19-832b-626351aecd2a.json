@@ -1,0 +1,20 @@
+{
+  "trace_id": "10bc657e-ac3e-4b19-832b-626351aecd2a",
+  "run_id": "5ad61d57-b904-4f0c-8871-ee0175e19cdc",
+  "agent_id": "/api/agent",
+  "model": "unknown",
+  "model_version": "unknown",
+  "prompt_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "started_at": "2026-04-01T04:13:44.756Z",
+  "completed_at": "2026-04-01T04:13:44.756Z",
+  "input": "what is 2+2",
+  "output": "",
+  "tool_calls": [],
+  "token_usage": {
+    "input": 0,
+    "output": 0
+  },
+  "duration_ms": 0,
+  "flags": [],
+  "consensus_result": null
+}

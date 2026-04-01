@@ -1,8 +1,8 @@
 {
-  "run_id": "a47007b0-8438-4884-a282-6d8d0cf4178f",
-  "timestamp": "2026-04-01T00:58:33.557Z",
-  "commit": "d4e153cc64a52a49c2200e587d19dd11e29ed474",
-  "cli_version": "0.3.1",
+  "run_id": "3d4114a8-97f5-4798-8c2c-79a8f24e91b0",
+  "timestamp": "2026-04-01T04:16:07.172Z",
+  "commit": "17319846b7d0336f866b9c0040c8b1c4cd09a097",
+  "cli_version": "0.4.0",
   "suites": [
     {
       "name": "triage_suite",
