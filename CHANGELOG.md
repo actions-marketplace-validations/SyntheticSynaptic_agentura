@@ -1,13 +1,18 @@
 # Changelog
 
-## [Unreleased]
+## [0.6.0] - 2026-04-01
 
 ### Added
-- PCCP Readiness Signals section in `agentura report` — five signals computed
-  from real eval data (eval coverage, baseline stability, contract enforcement,
-  drift status, model version consistency), each with PASS/WARN/FAIL status
-- `--format md` flag for `agentura report` — generates a GitHub-renderable
-  markdown export alongside or instead of the HTML report
+- Runtime contract enforcement in `agentura trace` — contracts from
+  `agentura.yaml` are evaluated on every trace call; `contract_results`
+  written to trace JSON; `CONTRACT CHECK` section printed after output;
+  `--no-contracts` flag to opt out; exits 1 only on `hard_fail`
+- PCCP Readiness Signals section in `agentura report` — five signals
+  computed from real eval data (eval coverage, baseline stability, contract
+  enforcement, drift status, model version consistency), each with
+  PASS/WARN/FAIL status and one-line explanation
+- `--format md` flag for `agentura report` — generates a
+  GitHub-renderable markdown export with drift table instead of inline SVG
 
 ---
 
@@ -130,7 +135,7 @@
 
 ---
 
-## [0.1.2] — 2026-03-26
+## [0.1.2] — 2026-03-16
 
 ### Fixed
 - README updated with npm badge, `--local` quickstart, and corrected
@@ -138,14 +143,14 @@
 
 ---
 
-## [0.1.1] — 2026-03-26
+## [0.1.1] — 2026-03-16
 
 ### Fixed
 - CLI binary now reports correct version from `package.json`
 
 ---
 
-## [0.1.0] — 2026-03-26
+## [0.1.0] — 2026-03-16
 
 ### Added
 - Initial release
