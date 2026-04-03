@@ -3,6 +3,7 @@ import test from "node:test";
 
 import type { SemanticSimilarityClientFactories } from "./semantic-similarity";
 import {
+  GROQ_EMBEDDINGS_UNSUPPORTED_ERROR,
   NO_EMBEDDING_PROVIDER_WARNING,
   OLLAMA_EMBEDDING_MODEL_WARNING,
   resetSemanticSimilarityTestState,
@@ -286,7 +287,7 @@ test("scoreSemanticSimilarity selects Gemini embeddings when only GEMINI_API_KEY
   ]);
 });
 
-test("scoreSemanticSimilarity selects Groq embeddings before Ollama when only GROQ_API_KEY is available", async () => {
+test("scoreSemanticSimilarity throws an actionable error when Groq is the selected provider", async () => {
   resetSemanticSimilarityTestState();
 
   const calls: Array<{ provider: string; input: string; model: string }> = [];
@@ -306,28 +307,17 @@ test("scoreSemanticSimilarity selects Groq embeddings before Ollama when only GR
     }
   );
 
-  const score = await scoreSemanticSimilarity(
-    "actual",
-    "expected",
+  await assert.rejects(
+    () =>
+      scoreSemanticSimilarity("actual", "expected", {
+        env: { GROQ_API_KEY: "groq-key", OLLAMA_BASE_URL: "http://127.0.0.1:1" },
+        clientFactories: factories,
+      }),
     {
-      env: { GROQ_API_KEY: "groq-key", OLLAMA_BASE_URL: "http://127.0.0.1:1" },
-      clientFactories: factories,
+      message: GROQ_EMBEDDINGS_UNSUPPORTED_ERROR,
     }
   );
-
-  assert.equal(score, 1);
-  assert.deepEqual(calls, [
-    {
-      provider: "groq",
-      input: "actual",
-      model: "text-embedding-3-small",
-    },
-    {
-      provider: "groq",
-      input: "expected",
-      model: "text-embedding-3-small",
-    },
-  ]);
+  assert.deepEqual(calls, []);
 });
 
 test("scoreSemanticSimilarity logs and uses Ollama when no API key exists and Ollama is reachable", async () => {
@@ -466,7 +456,7 @@ test("scoreSemanticSimilarity uses fuzzy_match when allowFallback is enabled and
 
     assert.equal(score, 0.5);
     assert.deepEqual(warnings, [
-      "semantic_similarity needs an embedding provider to run.\nAdd an API key for Anthropic, OpenAI, Gemini, or Groq,\nor start Ollama locally (ollama.com).\nUsing fuzzy_match because --allow-fallback is set.",
+      "semantic_similarity needs an embedding provider to run.\nAdd an API key for Anthropic, OpenAI, or Gemini,\nor start Ollama locally (ollama.com).\nUsing fuzzy_match because --allow-fallback is set.",
     ]);
   });
 });

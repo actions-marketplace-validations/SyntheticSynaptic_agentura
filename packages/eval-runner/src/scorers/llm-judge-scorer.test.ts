@@ -129,7 +129,7 @@ test("resolveLlmJudgeProvider prioritizes anthropic over other provider keys", a
   assert.deepEqual(judge, {
     provider: "anthropic",
     apiKey: "anthropic-key",
-    model: "claude-3-5-haiku-20241022",
+    model: "claude-haiku-4-5-20251001",
   });
 });
 
@@ -215,14 +215,14 @@ test("scoreLlmJudge uses the anthropic client and configured model", async () =>
     "What is 2+2?",
     "It is 4",
     "Give full score for correct answers.",
-    createJudge("anthropic", "claude-3-5-haiku-20241022"),
+    createJudge("anthropic", "claude-haiku-4-5-20251001"),
     undefined,
     createClientFactories('{"score":0.9,"reason":"Correct and concise."}', calls)
   );
 
   assert.equal(result.score, 0.9);
   assert.equal(result.reason, "Correct and concise.");
-  assert.deepEqual(calls, [{ provider: "anthropic", model: "claude-3-5-haiku-20241022" }]);
+  assert.deepEqual(calls, [{ provider: "anthropic", model: "claude-haiku-4-5-20251001" }]);
 });
 
 test("scoreLlmJudge uses the openai client and configured model", async () => {

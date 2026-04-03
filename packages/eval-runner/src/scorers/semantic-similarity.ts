@@ -24,12 +24,14 @@ export interface ResolvedSemanticSimilarityProvider {
 }
 
 export const NO_EMBEDDING_PROVIDER_WARNING =
-  "semantic_similarity needs an embedding provider to run.\nAdd an API key for Anthropic, OpenAI, Gemini, or Groq,\nor start Ollama locally (ollama.com).\nTo use string-based matching instead, set scorer: fuzzy_match";
+  "semantic_similarity needs an embedding provider to run.\nAdd an API key for Anthropic, OpenAI, or Gemini,\nor start Ollama locally (ollama.com).\nTo use string-based matching instead, set scorer: fuzzy_match";
 export const NO_EMBEDDING_API_KEY_WARNING = NO_EMBEDDING_PROVIDER_WARNING;
 export { OLLAMA_EMBEDDING_MODEL_WARNING };
+export const GROQ_EMBEDDINGS_UNSUPPORTED_ERROR =
+  "Groq does not support embeddings. Use a different provider for semantic_similarity (e.g. openai, anthropic, gemini) or switch to fuzzy_match.";
 
 const ALLOW_FALLBACK_PROVIDER_WARNING =
-  "semantic_similarity needs an embedding provider to run.\nAdd an API key for Anthropic, OpenAI, Gemini, or Groq,\nor start Ollama locally (ollama.com).\nUsing fuzzy_match because --allow-fallback is set.";
+  "semantic_similarity needs an embedding provider to run.\nAdd an API key for Anthropic, OpenAI, or Gemini,\nor start Ollama locally (ollama.com).\nUsing fuzzy_match because --allow-fallback is set.";
 
 interface OpenAIEmbeddingResponse {
   data?: Array<{
@@ -512,6 +514,10 @@ export async function scoreSemanticSimilarity(
   if (provider.provider === "ollama" && !ollamaSelectionLogShown) {
     console.log(`semantic_similarity: using ollama (${provider.model}) [local]`);
     ollamaSelectionLogShown = true;
+  }
+
+  if (provider.provider === "groq") {
+    throw new Error(GROQ_EMBEDDINGS_UNSUPPORTED_ERROR);
   }
 
   const [outputEmbedding, expectedEmbedding] = await Promise.all([

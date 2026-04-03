@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI } from "@google/genai";
+// Keep groq-sdk on >=1.1.2: 0.x pulled node-fetch/whatwg-url, which triggered Node's DEP0040 punycode warning.
 import Groq from "groq-sdk";
 import OpenAI from "openai";
 import {
@@ -182,7 +183,7 @@ const JUDGE_PROVIDER_PRIORITY: Array<{
   {
     provider: "anthropic",
     envVar: "ANTHROPIC_API_KEY",
-    model: "claude-3-5-haiku-20241022",
+    model: "claude-haiku-4-5-20251001",
   },
   {
     provider: "openai",

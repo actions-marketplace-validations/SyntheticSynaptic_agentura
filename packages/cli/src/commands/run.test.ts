@@ -211,7 +211,7 @@ test("llm_judge summary rows include agreement text and render an Agreement colu
     {
       suiteName: "quality",
       strategy: "llm_judge",
-      judge_model: "claude-3-5-haiku-20241022",
+      judge_model: "claude-haiku-4-5-20251001",
       judge_runs: 3,
       score: 0.84,
       threshold: 0.7,
@@ -529,9 +529,58 @@ ci:
   assert.equal(result.code, 1);
   assert.match(
     output,
-    /semantic_similarity needs an embedding provider to run\.\nAdd an API key for Anthropic, OpenAI, Gemini, or Groq,\nor start Ollama locally \(ollama\.com\)\.\nTo use string-based matching instead, set scorer: fuzzy_match/
+    /semantic_similarity needs an embedding provider to run\.\nAdd an API key for Anthropic, OpenAI, or Gemini,\nor start Ollama locally \(ollama\.com\)\.\nTo use string-based matching instead, set scorer: fuzzy_match/
   );
   assert.match(output, /✗ case_3 \(similarity: 0\.00\) "What does the free plan include\?"/);
+});
+
+test("run --local surfaces an actionable Groq semantic_similarity error", async () => {
+  const directory = await createFixtureDir("agentura-cli-local-semantic-groq-");
+
+  await writeCommonConfigFiles(
+    directory,
+    `
+const chunks = [];
+process.stdin.on("data", (chunk) => chunks.push(chunk.toString()));
+process.stdin.on("end", () => {
+  process.stdout.write("The free plan includes 3 projects.");
+});
+`.trimStart(),
+    `{"id":"case_3","input":"What does the free plan include?","expected":"3 projects"}\n`,
+    `
+version: 1
+agent:
+  type: cli
+  command: node ./agent.js
+  timeout_ms: 30000
+evals:
+  - name: accuracy
+    type: golden_dataset
+    dataset: ./evals/cases.jsonl
+    scorer: semantic_similarity
+    threshold: 0.85
+ci:
+  block_on_regression: true
+  regression_threshold: 0.05
+  compare_to: main
+  post_comment: true
+  fail_on_new_suite: false
+`.trimStart()
+  );
+
+  const result = await runCli(directory, ["run", "--local"], {
+    OPENAI_API_KEY: null,
+    ANTHROPIC_API_KEY: null,
+    GEMINI_API_KEY: null,
+    GROQ_API_KEY: "groq-key",
+    OLLAMA_BASE_URL: "http://127.0.0.1:1",
+  });
+
+  assert.equal(result.code, 1);
+  assert.match(
+    stripAnsi(result.output),
+    /Groq does not support embeddings\. Use a different provider for semantic_similarity \(e\.g\. openai, anthropic, gemini\) or switch to fuzzy_match\./
+  );
 });
 
 test("run --local --allow-fallback uses fuzzy_match for semantic_similarity suites when no provider is available", async () => {
@@ -2581,27 +2630,164 @@ test("report command renders a self-contained clinical audit html report with dr
   );
   await writeFile(
     path.join(directory, ".agentura", "manifest.jsonl"),
-    `${JSON.stringify({
-      type: "contract_result",
-      run_id: "run-2",
-      timestamp: "2026-03-27T12:00:15.000Z",
-      contract_name: "action_boundary",
-      contract_version: "0.5.0",
-      eval_suite: "accuracy",
-      case_id: "case_2",
-      failure_mode: "hard_fail",
-      passed: false,
-      assertions: [
-        {
-          type: "allowed_values",
+    [
+      ...["case_1", "case_2", "case_3"].map((caseId) =>
+        JSON.stringify({
+          type: "contract_result",
+          run_id: "run-1",
+          timestamp: "2026-03-20T12:00:15.000Z",
+          contract_name: "action_boundary",
+          contract_version: "0.5.0",
+          eval_suite: "accuracy",
+          case_id: caseId,
+          failure_mode: "soft_fail",
+          passed: true,
+          assertions: [
+            {
+              type: "allowed_values",
+              passed: true,
+              field: "output.action",
+              observed: "observe",
+              expected: "observe, refer, escalate",
+              message: "Action within approved scope",
+            },
+          ],
+        })
+      ),
+      JSON.stringify({
+        type: "contract_result",
+        run_id: "run-1",
+        timestamp: "2026-03-20T12:00:16.000Z",
+        contract_name: "action_boundary",
+        contract_version: "0.5.0",
+        eval_suite: "accuracy",
+        case_id: "case_4",
+        failure_mode: "soft_fail",
+        passed: false,
+        assertions: [
+          {
+            type: "allowed_values",
+            passed: false,
+            field: "output.action",
+            observed: "delay",
+            expected: "observe, refer, escalate",
+            message: "Action outside approved scope",
+          },
+        ],
+      }),
+      ...["case_5", "case_6"].map((caseId) =>
+        JSON.stringify({
+          type: "contract_result",
+          run_id: "run-1b",
+          timestamp: "2026-03-23T12:00:15.000Z",
+          contract_name: "action_boundary",
+          contract_version: "0.5.0",
+          eval_suite: "accuracy",
+          case_id: caseId,
+          failure_mode: "soft_fail",
+          passed: true,
+          assertions: [
+            {
+              type: "allowed_values",
+              passed: true,
+              field: "output.action",
+              observed: "observe",
+              expected: "observe, refer, escalate",
+              message: "Action within approved scope",
+            },
+          ],
+        })
+      ),
+      ...["case_7", "case_8"].map((caseId) =>
+        JSON.stringify({
+          type: "contract_result",
+          run_id: "run-1b",
+          timestamp: "2026-03-23T12:00:16.000Z",
+          contract_name: "action_boundary",
+          contract_version: "0.5.0",
+          eval_suite: "accuracy",
+          case_id: caseId,
+          failure_mode: "escalation_required",
           passed: false,
-          field: "output.action",
-          observed: "prescribe",
-          expected: "observe, refer, escalate",
-          message: "Action outside approved scope",
-        },
-      ],
-    })}\n`,
+          assertions: [
+            {
+              type: "allowed_values",
+              passed: false,
+              field: "output.action",
+              observed: "prescribe",
+              expected: "observe, refer, escalate",
+              message: "Action outside approved scope",
+            },
+          ],
+        })
+      ),
+      JSON.stringify({
+        type: "contract_result",
+        run_id: "run-2",
+        timestamp: "2026-03-27T12:00:14.000Z",
+        contract_name: "action_boundary",
+        contract_version: "0.5.0",
+        eval_suite: "accuracy",
+        case_id: "case_9",
+        failure_mode: "soft_fail",
+        passed: true,
+        assertions: [
+          {
+            type: "allowed_values",
+            passed: true,
+            field: "output.action",
+            observed: "observe",
+            expected: "observe, refer, escalate",
+            message: "Action within approved scope",
+          },
+        ],
+      }),
+      ...["case_10", "case_11"].map((caseId) =>
+        JSON.stringify({
+          type: "contract_result",
+          run_id: "run-2",
+          timestamp: "2026-03-27T12:00:15.000Z",
+          contract_name: "action_boundary",
+          contract_version: "0.5.0",
+          eval_suite: "accuracy",
+          case_id: caseId,
+          failure_mode: "soft_fail",
+          passed: false,
+          assertions: [
+            {
+              type: "allowed_values",
+              passed: false,
+              field: "output.action",
+              observed: "delay",
+              expected: "observe, refer, escalate",
+              message: "Action outside approved scope",
+            },
+          ],
+        })
+      ),
+      JSON.stringify({
+        type: "contract_result",
+        run_id: "run-2",
+        timestamp: "2026-03-27T12:00:16.000Z",
+        contract_name: "action_boundary",
+        contract_version: "0.5.0",
+        eval_suite: "accuracy",
+        case_id: "case_2",
+        failure_mode: "hard_fail",
+        passed: false,
+        assertions: [
+          {
+            type: "allowed_values",
+            passed: false,
+            field: "output.action",
+            observed: "prescribe",
+            expected: "observe, refer, escalate",
+            message: "Action outside approved scope",
+          },
+        ],
+      }),
+      "",
+    ].join("\n"),
     "utf-8"
   );
 
@@ -2679,6 +2865,10 @@ drift:
   assert.match(html, /50\.0%/);
   assert.match(html, /Dataset Hashes/);
   assert.match(html, /sha256:dataset-a/);
+  assert.match(html, /Run Trend/);
+  assert.match(html, /degrading  ▼/);
+  assert.match(html, /-25\.0% \/ run/);
+  assert.match(html, /run-1b/);
   assert.match(html, /consensus_check/);
   assert.match(html, /Semantic drift trend/);
   assert.match(html, /PCCP Readiness Signals/);
@@ -2686,8 +2876,10 @@ drift:
   assert.match(html, /Baseline stability/);
   assert.match(html, /Contract enforcement/);
   assert.match(html, /Drift status/);
+  assert.match(html, /Run trend/);
   assert.match(html, /Model version consistency/);
   assert.match(html, /Contracts were active and 1 hard_fail event\(s\) fired in this period\./);
+  assert.match(html, /Pass rate slope is -25\.0% \/ run over the last 3 run\(s\)\./);
   assert.match(html, /1 case\(s\) flipped pass→fail versus the stored baseline\./);
   assert.match(html, /Added: case_4:watchful_wait:\{&quot;months&quot;:6\}/);
   assert.match(html, /Removed: case_4:route_specialist:\{&quot;specialty&quot;:&quot;achd&quot;\}/);
@@ -2714,10 +2906,157 @@ drift:
   assert.equal(markdownResult.code, 0);
   const markdown = await readFile(path.join(directory, "clinical-audit-2026-03.md"), "utf-8");
   assert.match(markdown, /^# Clinical Audit Report/m);
+  assert.match(markdown, /^## Run Trend$/m);
   assert.match(markdown, /^## PCCP Readiness Signals$/m);
+  assert.match(markdown, /degrading/);
+  assert.match(markdown, /-25\.0% \/ run/);
+  assert.match(markdown, /run-1b/);
   assert.match(markdown, /^\| Timestamp \| Semantic drift \| Tool call drift \| Latency drift \| Threshold breaches \|$/m);
   assert.match(markdown, /Contracts were active and 1 hard_fail event\(s\) fired in this period\./);
   assert.doesNotMatch(markdown, /<svg/i);
+});
+
+test("trend command analyzes recent contract pass rates and can fail on regression", async () => {
+  const directory = await createFixtureDir("agentura-cli-trend-command-");
+
+  await writeCommonConfigFiles(
+    directory,
+    `process.stdin.resume(); process.stdin.on("end", () => process.stdout.write("ok"));`,
+    `{"id":"case_1","input":"hello","expected":"ok"}\n`,
+    `
+version: 1
+agent:
+  type: cli
+  command: node ./agent.js
+  timeout_ms: 30000
+evals:
+  - name: accuracy
+    type: golden_dataset
+    dataset: ./evals/cases.jsonl
+    scorer: exact_match
+    threshold: 0.85
+ci:
+  block_on_regression: true
+  regression_threshold: 0.05
+  compare_to: main
+  post_comment: true
+  fail_on_new_suite: false
+`.trimStart()
+  );
+
+  await mkdir(path.join(directory, ".agentura"), { recursive: true });
+  await writeFile(
+    path.join(directory, ".agentura", "manifest.jsonl"),
+    [
+      ...["run-1-a", "run-1-b", "run-1-c"].map((caseId) =>
+        JSON.stringify({
+          type: "contract_result",
+          run_id: "run-1",
+          timestamp: "2026-03-20T12:00:00.000Z",
+          contract_name: "action_boundary",
+          contract_version: "0.5.0",
+          eval_suite: "accuracy",
+          case_id: caseId,
+          failure_mode: "soft_fail",
+          passed: true,
+          assertions: [],
+        })
+      ),
+      JSON.stringify({
+        type: "contract_result",
+        run_id: "run-1",
+        timestamp: "2026-03-20T12:00:01.000Z",
+        contract_name: "action_boundary",
+        contract_version: "0.5.0",
+        eval_suite: "accuracy",
+        case_id: "run-1-d",
+        failure_mode: "soft_fail",
+        passed: false,
+        assertions: [],
+      }),
+      ...["run-2-a", "run-2-b"].map((caseId) =>
+        JSON.stringify({
+          type: "contract_result",
+          run_id: "run-2",
+          timestamp: "2026-03-21T12:00:00.000Z",
+          contract_name: "action_boundary",
+          contract_version: "0.5.0",
+          eval_suite: "accuracy",
+          case_id: caseId,
+          failure_mode: "soft_fail",
+          passed: true,
+          assertions: [],
+        })
+      ),
+      ...["run-2-c", "run-2-d"].map((caseId) =>
+        JSON.stringify({
+          type: "contract_result",
+          run_id: "run-2",
+          timestamp: "2026-03-21T12:00:01.000Z",
+          contract_name: "action_boundary",
+          contract_version: "0.5.0",
+          eval_suite: "accuracy",
+          case_id: caseId,
+          failure_mode: "soft_fail",
+          passed: false,
+          assertions: [],
+        })
+      ),
+      JSON.stringify({
+        type: "contract_result",
+        run_id: "run-3",
+        timestamp: "2026-03-22T12:00:00.000Z",
+        contract_name: "action_boundary",
+        contract_version: "0.5.0",
+        eval_suite: "accuracy",
+        case_id: "run-3-a",
+        failure_mode: "soft_fail",
+        passed: true,
+        assertions: [],
+      }),
+      ...["run-3-b", "run-3-c", "run-3-d"].map((caseId) =>
+        JSON.stringify({
+          type: "contract_result",
+          run_id: "run-3",
+          timestamp: "2026-03-22T12:00:01.000Z",
+          contract_name: "action_boundary",
+          contract_version: "0.5.0",
+          eval_suite: "accuracy",
+          case_id: caseId,
+          failure_mode: "soft_fail",
+          passed: false,
+          assertions: [],
+        })
+      ),
+      "",
+    ].join("\n"),
+    "utf-8"
+  );
+
+  const reportResult = await runCli(directory, ["trend", "--window", "5"]);
+  const reportOutput = stripAnsi(reportResult.output);
+
+  assert.equal(reportResult.code, 0);
+  assert.match(reportOutput, /RUN TREND  \(last 5 runs\)/);
+  assert.match(reportOutput, /agent_id        node \.\/agent\.js/);
+  assert.match(reportOutput, /direction       degrading  ▼/);
+  assert.match(reportOutput, /slope           -25\.0% \/ run/);
+  assert.match(reportOutput, /regression      YES/);
+  assert.match(reportOutput, /run-1/);
+  assert.match(reportOutput, /run-2/);
+  assert.match(reportOutput, /run-3/);
+  assert.match(reportOutput, /Pass rate trending down\. Run `agentura report` for full audit\./);
+
+  const failingResult = await runCli(directory, ["trend", "--window", "5", "--fail-on-regression"]);
+  assert.equal(failingResult.code, 1);
+});
+
+test("agentura help lists the trend command", async () => {
+  const directory = await createFixtureDir("agentura-cli-help-");
+  const result = await runCli(directory, ["--help"]);
+
+  assert.equal(result.code, 0);
+  assert.match(stripAnsi(result.output), /trend\s+Analyze pass rate trends across recent CI runs/);
 });
 
 test("consensus command parser normalizes provider aliases and validates threshold", () => {

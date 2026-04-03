@@ -35,7 +35,7 @@ test("runLlmJudge uses majority vote for pass/fail, averages scores, and reports
       judge: {
         provider: "anthropic",
         apiKey: "test-key",
-        model: "claude-3-5-haiku-20241022",
+        model: "claude-haiku-4-5-20251001",
       },
       scoreJudge: async () => {
         const next = judgeResults[callCount];
@@ -47,7 +47,7 @@ test("runLlmJudge uses majority vote for pass/fail, averages scores, and reports
     "Use the rubric strictly."
   );
 
-  assert.equal(result.judge_model, "claude-3-5-haiku-20241022");
+  assert.equal(result.judge_model, "claude-haiku-4-5-20251001");
   assert.equal(result.judge_runs, 3);
   assert.ok(Math.abs(result.score - 0.7) < 1e-9);
   assert.equal(result.passed, true);
@@ -134,7 +134,7 @@ test("runLlmJudge passes full multi-turn conversation context to the judge and a
       judge: {
         provider: "anthropic",
         apiKey: "test-key",
-        model: "claude-3-5-haiku-20241022",
+        model: "claude-haiku-4-5-20251001",
       },
       scoreJudge: async (_input, _output, _rubric, _judge, context) => {
         seenContexts.push(context ?? "");

@@ -116,7 +116,28 @@ interface ReportSummary {
   consensusAgreementRate: number | null;
 }
 
-export type ClinicalAuditReportFormat = "html" | "md";
+export interface RunSummary {
+  run_id: string;
+  agent_id: string;
+  evaluated_at: string;
+  pass_rate: number;
+  flag_count: number;
+  contract_count: number;
+}
+
+export interface RunTrendReport {
+  agent_id: string;
+  window: number;
+  run_summaries: RunSummary[];
+  pass_rate_slope: number;
+  direction: "improving" | "degrading" | "stable";
+  any_regression: boolean;
+}
+
+export type ClinicalAuditReportFormat = "html" | "md" | "pdf";
+export const DEFAULT_RUN_TREND_WINDOW = 20;
+export const PDF_CHROMIUM_REQUIRED_ERROR =
+  "PDF export requires Chromium. Run: npx puppeteer browsers install chrome";
 
 interface RenderClinicalAuditReportOptions {
   cwd: string;
@@ -327,7 +348,11 @@ function normalizeReportFormat(value: string | undefined): ClinicalAuditReportFo
     return "md";
   }
 
-  throw new Error(`report format must be "html" or "md", got: ${value}`);
+  if (value === "pdf") {
+    return "pdf";
+  }
+
+  throw new Error(`report format must be "html", "md", or "pdf", got: ${value}`);
 }
 
 export async function resolveClinicalAuditReportOptions(options: {
@@ -384,6 +409,30 @@ function formatDate(value: string): string {
 
 function formatPercent(value: number): string {
   return `${(Math.max(0, Math.min(1, value)) * 100).toFixed(1)}%`;
+}
+
+function formatDecimalRatio(value: number): string {
+  return Math.max(0, Math.min(1, value)).toFixed(2);
+}
+
+function formatSignedPercentPerRun(value: number): string {
+  return `${(value * 100).toFixed(1)}% / run`;
+}
+
+function formatTrendRegression(value: boolean): string {
+  return value ? "YES" : "NO";
+}
+
+function renderTrendDirection(direction: RunTrendReport["direction"]): string {
+  if (direction === "improving") {
+    return "improving  ▲";
+  }
+
+  if (direction === "degrading") {
+    return "degrading  ▼";
+  }
+
+  return "stable     -";
 }
 
 function formatDelta(value: number | null): string {
@@ -593,9 +642,9 @@ async function readLatestDiffReport(
 
 async function readContractResultsSince(
   agenturaDir: string,
-  since: string
+  since?: string | null
 ): Promise<ContractAuditEntry[]> {
-  const after = readDate(since);
+  const after = typeof since === "string" ? readDate(since) : null;
   const filePath = path.join(agenturaDir, AUDIT_MANIFEST_FILE);
   let raw: string;
 
@@ -615,7 +664,7 @@ async function readContractResultsSince(
     try {
       const entry = JSON.parse(trimmed) as { type?: string; timestamp?: string };
       if (entry.type === "contract_result" && typeof entry.timestamp === "string") {
-        if (readDate(entry.timestamp) >= after) {
+        if (after === null || readDate(entry.timestamp) >= after) {
           entries.push(entry as ContractAuditEntry);
         }
       }
@@ -625,6 +674,111 @@ async function readContractResultsSince(
   }
 
   return entries;
+}
+
+export function olsSlope(points: [number, number][]): number {
+  const n = points.length;
+  if (n < 2) {
+    return 0;
+  }
+
+  const sumX = points.reduce((total, [x]) => total + x, 0);
+  const sumY = points.reduce((total, [, y]) => total + y, 0);
+  const sumXY = points.reduce((total, [x, y]) => total + x * y, 0);
+  const sumX2 = points.reduce((total, [x]) => total + x * x, 0);
+  const denominator = n * sumX2 - sumX * sumX;
+
+  if (denominator === 0) {
+    return 0;
+  }
+
+  return (n * sumXY - sumX * sumY) / denominator;
+}
+
+function determineTrendDirection(
+  slope: number
+): RunTrendReport["direction"] {
+  if (slope > 0.005) {
+    return "improving";
+  }
+
+  if (slope < -0.005) {
+    return "degrading";
+  }
+
+  return "stable";
+}
+
+function hasSufficientTrendData(report: RunTrendReport | null): report is RunTrendReport {
+  return report !== null && report.run_summaries.length >= 3;
+}
+
+function summarizeRunContracts(
+  entries: ContractAuditEntry[],
+  agentId: string
+): RunSummary[] {
+  const byRunId = new Map<
+    string,
+    {
+      evaluatedAt: string;
+      passedContracts: number;
+      totalContracts: number;
+      flagCount: number;
+    }
+  >();
+
+  for (const entry of entries) {
+    const existing = byRunId.get(entry.run_id) ?? {
+      evaluatedAt: entry.timestamp,
+      passedContracts: 0,
+      totalContracts: 0,
+      flagCount: 0,
+    };
+
+    existing.evaluatedAt =
+      readDate(entry.timestamp) > readDate(existing.evaluatedAt)
+        ? entry.timestamp
+        : existing.evaluatedAt;
+    existing.totalContracts += 1;
+    existing.passedContracts += entry.passed ? 1 : 0;
+    existing.flagCount += entry.passed ? 0 : 1;
+    byRunId.set(entry.run_id, existing);
+  }
+
+  return [...byRunId.entries()]
+    .map(([runId, summary]) => ({
+      run_id: runId,
+      agent_id: agentId,
+      evaluated_at: summary.evaluatedAt,
+      pass_rate:
+        summary.totalContracts === 0 ? 0 : summary.passedContracts / summary.totalContracts,
+      flag_count: summary.flagCount,
+      contract_count: summary.totalContracts,
+    }))
+    .sort((left, right) => left.evaluated_at.localeCompare(right.evaluated_at));
+}
+
+export async function analyzeRunTrend(options: {
+  agenturaDir: string;
+  agentId: string;
+  window?: number;
+  since?: string;
+}): Promise<RunTrendReport> {
+  const window = options.window ?? DEFAULT_RUN_TREND_WINDOW;
+  const summaries = summarizeRunContracts(
+    await readContractResultsSince(options.agenturaDir, options.since ?? null),
+    options.agentId
+  ).slice(-window);
+  const slope = olsSlope(summaries.map((summary, index) => [index, summary.pass_rate]));
+
+  return {
+    agent_id: options.agentId,
+    window,
+    run_summaries: summaries,
+    pass_rate_slope: slope,
+    direction: determineTrendDirection(slope),
+    any_regression: slope < -0.01,
+  };
 }
 
 function buildContractRowSummaries(entries: ContractAuditEntry[]): ContractRowSummary[] {
@@ -769,11 +923,15 @@ function renderTable(headers: string[], rows: string[][]): string {
   return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
-function renderSparkline(values: number[]): string {
+function renderSparkline(
+  values: number[],
+  label = "Semantic drift trend",
+  emptyLabel = "No drift history"
+): string {
   const width = 220;
   const height = 48;
   if (values.length === 0) {
-    return `<svg viewBox="0 0 ${width} ${height}" class="sparkline" role="img" aria-label="No drift history"><text x="8" y="28">No drift history</text></svg>`;
+    return `<svg viewBox="0 0 ${width} ${height}" class="sparkline" role="img" aria-label="${escapeHtml(emptyLabel)}"><text x="8" y="28">${escapeHtml(emptyLabel)}</text></svg>`;
   }
 
   const points = values.map((value, index) => {
@@ -782,7 +940,7 @@ function renderSparkline(values: number[]): string {
     return `${x.toFixed(2)},${y.toFixed(2)}`;
   });
 
-  return `<svg viewBox="0 0 ${width} ${height}" class="sparkline" role="img" aria-label="Semantic drift trend">
+  return `<svg viewBox="0 0 ${width} ${height}" class="sparkline" role="img" aria-label="${escapeHtml(label)}">
     <line x1="8" y1="${height - 8}" x2="${width - 8}" y2="${height - 8}" class="axis" />
     <polyline fill="none" stroke="currentColor" stroke-width="2" points="${points.join(" ")}" />
   </svg>`;
@@ -932,6 +1090,7 @@ function computePccpReadinessSignals(options: {
   contractsConfigured: boolean;
   diffReport: StoredDiffReport | null;
   drift: DriftComputation;
+  runTrend: RunTrendReport | null;
 }): PccpReadinessSignal[] {
   const uniqueCases = new Set(
     options.auditRecords.flatMap((record) =>
@@ -1037,6 +1196,31 @@ function computePccpReadinessSignals(options: {
           explanation: options.drift.error ?? "Insufficient data — drift status could not be computed.",
         };
 
+  const runTrendSignal: PccpReadinessSignal =
+    !hasSufficientTrendData(options.runTrend)
+      ? {
+          name: "Run trend",
+          status: "WARN",
+          explanation: "Insufficient data for trend analysis (need ≥ 3 runs).",
+        }
+      : options.runTrend.pass_rate_slope < -0.01
+        ? {
+            name: "Run trend",
+            status: "FAIL",
+            explanation: `Pass rate slope is ${formatSignedPercentPerRun(options.runTrend.pass_rate_slope)} over the last ${String(options.runTrend.run_summaries.length)} run(s).`,
+          }
+        : options.runTrend.pass_rate_slope < -0.005
+          ? {
+              name: "Run trend",
+              status: "WARN",
+              explanation: `Pass rate slope is ${formatSignedPercentPerRun(options.runTrend.pass_rate_slope)} over the last ${String(options.runTrend.run_summaries.length)} run(s).`,
+            }
+          : {
+              name: "Run trend",
+              status: "PASS",
+              explanation: `Pass rate slope is ${formatSignedPercentPerRun(options.runTrend.pass_rate_slope)} over the last ${String(options.runTrend.run_summaries.length)} run(s).`,
+            };
+
   const modelSignal: PccpReadinessSignal =
     modelVersions.length === 0
       ? {
@@ -1056,7 +1240,7 @@ function computePccpReadinessSignals(options: {
             explanation: `${String(modelVersions.length)} model versions were observed in this period: ${modelVersions.join(", ")}.`,
           };
 
-  return [coverageSignal, baselineSignal, contractSignal, driftSignal, modelSignal];
+  return [coverageSignal, baselineSignal, contractSignal, driftSignal, runTrendSignal, modelSignal];
 }
 
 function renderPccpReadinessSignalsSection(signals: PccpReadinessSignal[]): string {
@@ -1072,12 +1256,66 @@ function renderPccpReadinessSignalsSection(signals: PccpReadinessSignal[]): stri
     </section>`;
 }
 
+function renderRunTrendHtmlSection(runTrend: RunTrendReport | null): string {
+  if (!hasSufficientTrendData(runTrend)) {
+    return `<section class="panel">
+      <h2>Run Trend</h2>
+      <p class="muted">Insufficient data for trend analysis (need ≥ 3 runs).</p>
+    </section>`;
+  }
+
+  return `<section class="panel">
+      <h2>Run Trend</h2>
+      ${renderKeyValueGrid([
+        { label: "Agent", value: escapeHtml(runTrend.agent_id) },
+        { label: "Direction", value: escapeHtml(renderTrendDirection(runTrend.direction)) },
+        { label: "Slope", value: escapeHtml(formatSignedPercentPerRun(runTrend.pass_rate_slope)) },
+        { label: "Regression", value: escapeHtml(formatTrendRegression(runTrend.any_regression)) },
+      ])}
+      <div style="margin-top:18px">
+        <strong>Pass rate sparkline</strong>
+        <div style="margin-top:10px">${renderSparkline(
+          runTrend.run_summaries.map((summary) => summary.pass_rate),
+          "Run pass rate trend",
+          "No trend data"
+        )}</div>
+      </div>
+      <div style="margin-top:18px">
+        <strong>Recent runs</strong>
+        <pre>${escapeHtml(renderRunTrendTable(runTrend))}</pre>
+      </div>
+    </section>`;
+}
+
+function renderRunTrendMarkdownSection(runTrend: RunTrendReport | null): string {
+  if (!hasSufficientTrendData(runTrend)) {
+    return "Insufficient data for trend analysis (need ≥ 3 runs).";
+  }
+
+  return [
+    renderMarkdownTable(
+      ["Metric", "Value"],
+      [
+        ["Agent", runTrend.agent_id],
+        ["Direction", runTrend.direction],
+        ["Slope", formatSignedPercentPerRun(runTrend.pass_rate_slope)],
+        ["Regression", formatTrendRegression(runTrend.any_regression)],
+      ]
+    ),
+    "",
+    "```text",
+    renderRunTrendTable(runTrend),
+    "```",
+  ].join("\n");
+}
+
 function renderClinicalAuditHtml(options: {
   since: string;
   summary: ReportSummary;
   latestRun: EvalRunAuditRecord | null;
   traces: AuditTraceRecord[];
   contractEntries: ContractAuditEntry[];
+  runTrend: RunTrendReport | null;
   readinessSignals: PccpReadinessSignal[];
   driftThresholds: DriftThresholdConfig;
   currentDrift: DriftComparisonResult | null;
@@ -1374,6 +1612,8 @@ function renderClinicalAuditHtml(options: {
 
       ${renderContractSummarySection(options.contractEntries)}
 
+      ${renderRunTrendHtmlSection(options.runTrend)}
+
       <section class="panel">
         <h2>Consensus Log</h2>
         ${renderKeyValueGrid([
@@ -1467,6 +1707,38 @@ function renderClinicalAuditHtml(options: {
 
 function escapeMarkdownTableCell(value: string): string {
   return value.replaceAll("|", "\\|").replaceAll("\n", "<br />");
+}
+
+function shortenRunId(runId: string): string {
+  return runId.length > 12 ? `${runId.slice(0, 9)}...` : runId;
+}
+
+function renderPlainTextTable(headers: string[], rows: string[][]): string {
+  const widths = headers.map((header, index) =>
+    Math.max(header.length, ...rows.map((row) => (row[index] ?? "").length))
+  );
+
+  const renderRow = (cells: string[]) =>
+    cells
+      .map((cell, index) => {
+        const width = widths[index] ?? cell.length;
+        return (cell ?? "").padEnd(width, " ");
+      })
+      .join("  ");
+
+  return [renderRow(headers), ...rows.map((row) => renderRow(row))].join("\n");
+}
+
+function renderRunTrendTable(runTrend: RunTrendReport): string {
+  return renderPlainTextTable(
+    ["run", "date", "pass_rate", "flags"],
+    runTrend.run_summaries.map((summary) => [
+      shortenRunId(summary.run_id),
+      formatDate(summary.evaluated_at),
+      formatDecimalRatio(summary.pass_rate),
+      String(summary.flag_count),
+    ])
+  );
 }
 
 function renderMarkdownTable(headers: string[], rows: string[][]): string {
@@ -1571,6 +1843,7 @@ function renderClinicalAuditMarkdown(options: {
   latestRun: EvalRunAuditRecord | null;
   traces: AuditTraceRecord[];
   contractEntries: ContractAuditEntry[];
+  runTrend: RunTrendReport | null;
   readinessSignals: PccpReadinessSignal[];
   driftThresholds: DriftThresholdConfig;
   currentDrift: DriftComparisonResult | null;
@@ -1700,6 +1973,9 @@ function renderClinicalAuditMarkdown(options: {
     "## Contract Summary",
     renderContractSummaryMarkdown(options.contractEntries),
     "",
+    "## Run Trend",
+    renderRunTrendMarkdownSection(options.runTrend),
+    "",
     "## Consensus Log",
     renderMarkdownTable(
       ["Metric", "Value"],
@@ -1771,6 +2047,40 @@ function renderClinicalAuditMarkdown(options: {
   ].join("\n");
 }
 
+async function writePdfReport(outputPath: string, html: string): Promise<void> {
+  const { default: puppeteer } = await import("puppeteer");
+
+  let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
+
+  try {
+    try {
+      browser = await puppeteer.launch({ headless: true });
+    } catch {
+      browser = await puppeteer.launch({ headless: true, channel: "chrome" });
+    }
+  } catch {
+    throw new Error(PDF_CHROMIUM_REQUIRED_ERROR);
+  }
+
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "load" });
+    await page.pdf({
+      path: outputPath,
+      format: "A4",
+      printBackground: true,
+      margin: {
+        top: "15mm",
+        right: "15mm",
+        bottom: "15mm",
+        left: "15mm",
+      },
+    });
+  } finally {
+    await browser.close();
+  }
+}
+
 export async function generateClinicalAuditReport(
   options: RenderClinicalAuditReportOptions
 ): Promise<ClinicalAuditReportResult> {
@@ -1822,44 +2132,44 @@ export async function generateClinicalAuditReport(
           .filter((value): value is number => typeof value === "number")
       ),
   };
+  const runTrend = await analyzeRunTrend({
+    agenturaDir,
+    agentId: summary.agentName,
+    window: DEFAULT_RUN_TREND_WINDOW,
+    since: options.since,
+  });
   const readinessSignals = computePccpReadinessSignals({
     auditRecords,
     contractEntries,
     contractsConfigured: configHints.contractsConfigured,
     diffReport,
     drift,
+    runTrend,
   });
-  const rendered =
-    options.format === "md"
-      ? renderClinicalAuditMarkdown({
-          since: options.since,
-          summary,
-          latestRun,
-          traces: combinedTraces,
-          contractEntries,
-          readinessSignals,
-          driftThresholds: configHints.driftThresholds,
-          currentDrift: drift.current,
-          driftTrend: drift.history,
-          driftError: drift.error,
-          systemTimeline: buildSystemTimeline(auditRecords),
-        })
-      : renderClinicalAuditHtml({
+  const outputPath = path.resolve(options.cwd, options.outPath);
+  await ensureDirectory(path.dirname(outputPath));
+  const renderOptions = {
     since: options.since,
     summary,
     latestRun,
     traces: combinedTraces,
     contractEntries,
+    runTrend,
     readinessSignals,
     driftThresholds: configHints.driftThresholds,
     currentDrift: drift.current,
     driftTrend: drift.history,
     driftError: drift.error,
     systemTimeline: buildSystemTimeline(auditRecords),
-  });
-  const outputPath = path.resolve(options.cwd, options.outPath);
-  await ensureDirectory(path.dirname(outputPath));
-  await fs.writeFile(outputPath, rendered, "utf-8");
+  };
+
+  if (options.format === "md") {
+    await fs.writeFile(outputPath, renderClinicalAuditMarkdown(renderOptions), "utf-8");
+  } else if (options.format === "pdf") {
+    await writePdfReport(outputPath, renderClinicalAuditHtml(renderOptions));
+  } else {
+    await fs.writeFile(outputPath, renderClinicalAuditHtml(renderOptions), "utf-8");
+  }
 
   return {
     outputPath,

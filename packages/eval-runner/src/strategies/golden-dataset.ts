@@ -9,7 +9,10 @@ import {
 import { scoreContains } from "../scorers/contains";
 import { scoreExactMatch } from "../scorers/exact-match";
 import { scoreFuzzyMatch } from "../scorers/fuzzy-match";
-import { scoreSemanticSimilarity } from "../scorers/semantic-similarity";
+import {
+  GROQ_EMBEDDINGS_UNSUPPORTED_ERROR,
+  scoreSemanticSimilarity,
+} from "../scorers/semantic-similarity";
 
 export type GoldenDatasetScorer =
   | "exact_match"
@@ -164,6 +167,13 @@ export async function runGoldenDataset(
         outputTokens: agentResult.outputTokens,
       });
     } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === GROQ_EMBEDDINGS_UNSUPPORTED_ERROR
+      ) {
+        throw error;
+      }
+
       caseResults.push({
         caseIndex: i,
         input: getCaseInput(current),

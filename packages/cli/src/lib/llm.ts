@@ -109,6 +109,7 @@ export async function callLLM(inputValue: CallLLMInput): Promise<string> {
     typeof inputValue === "string" ? undefined : inputValue.systemPrompt?.trim() || undefined;
 
   try {
+    // Keep groq-sdk on >=1.1.2: 0.x pulled node-fetch/whatwg-url, which triggered Node's DEP0040 punycode warning.
     const moduleNamespace = (await importModule("groq-sdk")) as { default?: GroqConstructor };
     const Groq = moduleNamespace.default;
 

@@ -8,9 +8,9 @@
 ## Current Status
 
 **Active milestone:** J — Clinical Audit Report Generator
-**Progress:** Added immutable local eval-run audit records plus HTML and markdown clinical audit exports with computed PCCP readiness signals
-**Last updated:** Added `agentura report --format md`, default report option resolution, and real PCCP readiness signals sourced from local eval evidence
-**Next action:** Surface the same clinical audit evidence in the dashboard and decide whether cloud-hosted eval runs should emit the same immutable report inputs
+**Progress:** Added `agentura trend`, report-side run trend analysis with sparkline/markdown sections, PDF export, slope-based PCCP readiness signals, and eval-provider technical debt fixes
+**Last updated:** Shipped run trend regression detection from `.agentura/manifest.jsonl`, `agentura report --format pdf`, Groq semantic-similarity guardrails, and `groq-sdk` upgrades that eliminate the `punycode` DEP0040 warning
+**Next action:** Surface run-trend and PCCP evidence in the dashboard, then decide whether cloud-hosted eval runs should snapshot the same immutable report inputs for parity with CLI exports
 
 ---
 
@@ -3051,3 +3051,52 @@ Continue from the committed trace-contract implementation if follow-up polish is
 
 **Next session:**
 Decide whether to expose the same PCCP readiness signals in the dashboard project/run views and whether cloud-hosted report generation should snapshot the same local evidence shape for parity with the CLI export.
+
+## Session — 2026-04-03 07:48 UTC
+
+**Milestone:** J — Clinical Audit Report Generator
+**Status:** COMPLETE
+
+**Files created:**
+- `packages/cli/src/commands/trend.ts` — added the new `agentura trend` command with manifest parsing, OLS slope analysis, regression gating, and terminal output formatting
+
+**Files modified:**
+- `packages/cli/src/index.ts` — registered `trend` and added `pdf` to the report format options
+- `packages/cli/src/lib/report.ts` — added reusable run-trend analysis, report trend sections, SVG sparkline rendering, slope-based PCCP readiness signals, and HTML-to-PDF export via Puppeteer
+- `packages/cli/package.json` — added the Puppeteer dependency and upgraded `groq-sdk` to a non-deprecated dependency chain
+- `packages/cli/src/lib/llm.ts` — documented and applied the Groq SDK upgrade to avoid the `punycode` DEP0040 warning path
+- `packages/eval-runner/package.json` — upgraded `groq-sdk` to the non-deprecated dependency chain
+- `packages/eval-runner/src/scorers/semantic-similarity.ts` — blocked Groq semantic-similarity runs with an explicit actionable embeddings error
+- `packages/eval-runner/src/scorers/semantic-similarity.test.ts` — added coverage for the Groq embeddings error path
+- `packages/eval-runner/src/strategies/golden-dataset.ts` — rethrew the Groq embeddings configuration error instead of silently flattening it into a misleading score
+- `packages/eval-runner/src/scorers/llm-judge-scorer.ts` — updated the default judge model to `claude-haiku-4-5-20251001` and documented the Groq SDK deprecation fix
+- `packages/eval-runner/src/scorers/llm-judge-scorer.test.ts` — updated judge-model expectations to the new default
+- `packages/eval-runner/src/strategies/llm-judge.test.ts` — updated strategy tests to the new default judge model
+- `packages/cli/src/commands/run.test.ts` — added coverage for surfaced Groq semantic-similarity failures and updated judge-model defaults in CLI expectations
+- `apps/playground/package.json` — upgraded `groq-sdk` so the app build no longer pulls the deprecated `punycode` path
+- `apps/playground/src/app/api/eval/route.ts` — documented the Groq SDK upgrade rationale next to the import
+- `pnpm-lock.yaml` — refreshed workspace lockfile for Puppeteer and Groq SDK upgrades
+- `docs/Documentation.md` — updated current status and appended this session summary
+
+**Decisions made:**
+- Run trend analysis is derived from grouped `contract_result` manifest entries rather than single-run suite summaries, because the pass-rate signal needed to reflect contract pass/fail behavior over consecutive CI runs.
+- PCCP readiness now evaluates the trend slope instead of a one-off pass rate, because stability over time is more meaningful for the report’s governance posture than a single sampled run.
+- Groq-backed semantic similarity now fails loudly before any embedding request, and `groq-sdk` is pinned to `>=1.1.2` across the workspace to avoid the deprecated `node-fetch`/`whatwg-url` `punycode` chain.
+
+**Validation results:**
+- `cd examples/triage-agent && node ../../packages/cli/dist/index.js run --local`: PASS (expected exit 1 because the demo still triggers the blocking `clinical_action_boundary` contract; manifest evidence was generated successfully)
+- `cd examples/triage-agent && node ../../packages/cli/dist/index.js trend --window 5`: PASS
+- `cd examples/triage-agent && node ../../packages/cli/dist/index.js trend --window 5 --fail-on-regression`: PASS
+- `cd examples/triage-agent && node ../../packages/cli/dist/index.js report --out audit.html`: PASS
+- `cd examples/triage-agent && node ../../packages/cli/dist/index.js report --format md --out audit.md`: PASS
+- `npx puppeteer browsers install chrome`: PASS
+- `cd examples/triage-agent && node ../../packages/cli/dist/index.js report --format pdf --out audit.pdf`: PASS
+- `NODE_OPTIONS=--trace-deprecation pnpm --dir apps/playground build`: PASS (no `punycode` DEP0040 warning after the Groq SDK upgrade)
+- `pnpm build && pnpm type-check && pnpm test`: PASS
+
+**Issues found:**
+- Sandboxed PDF validation could not launch Chromium even after installation; the host-level rerun succeeded, so the CLI feature is valid but the Codex sandbox cannot exercise the browser process directly.
+- Validation regenerated local example artifacts under `examples/triage-agent/` (`.agentura/*`, `audit.html`, `audit.md`, `audit.pdf`); these are verification outputs and are intentionally left out of the commit.
+
+**Next session:**
+Expose the new run-trend signal and sparkline in the dashboard project/run views, and decide whether hosted report generation should reuse the same manifest-derived trend evidence as the CLI.

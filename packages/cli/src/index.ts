@@ -16,6 +16,7 @@ import {
   referenceSnapshotCommand,
 } from "./commands/reference";
 import { runCommand } from "./commands/run";
+import { trendCommand } from "./commands/trend";
 import { traceCommand, traceDiffCommand } from "./commands/trace";
 
 const require = createRequire(__filename);
@@ -33,6 +34,7 @@ program
       "  run       Run evals locally\n" +
       "  login     Authenticate with Agentura\n" +
       "  report    Build a clinical governance audit report from local evidence\n" +
+      "  trend     Analyze pass rate trends across recent CI runs\n" +
       "  reference Freeze an agent version and measure behavioral drift\n" +
       "  trace     Capture a production trace for an agent call"
   )
@@ -95,9 +97,17 @@ program
   .description("Generate a self-contained clinical audit report from local eval evidence")
   .option("--since <date>", "Only include evidence on or after this YYYY-MM-DD date")
   .option("--reference <label>", "Frozen reference label used for drift reporting")
-  .option("--format <type>", "Report format: html | md", "html")
+  .option("--format <type>", "Report format: html | md | pdf", "html")
   .requiredOption("--out <file>", "Output report file path")
   .action(reportCommand);
+
+program
+  .command("trend")
+  .description("Analyze pass rate trends across recent CI runs")
+  .option("--window <n>", "Analyze the last N runs", String(20))
+  .option("--fail-on-regression", "Exit 1 when the run trend slope shows a regression")
+  .option("--config <path>", "Path to an agentura.yaml file")
+  .action(trendCommand);
 
 const referenceProgram = program
   .command("reference")

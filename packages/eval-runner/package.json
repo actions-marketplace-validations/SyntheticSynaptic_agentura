@@ -13,7 +13,7 @@
     "@agentura/types": "workspace:*",
     "@anthropic-ai/sdk": "^0.80.0",
     "@google/genai": "^1.46.0",
-    "groq-sdk": "^0.37.0",
+    "groq-sdk": "^1.1.2",
     "openai": "^6.33.0",
     "p-limit": "^3.1.0"
   },
