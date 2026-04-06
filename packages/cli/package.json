@@ -1,6 +1,6 @@
 {
   "name": "agentura",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Eval CI/CD for AI agents. Catch regressions before merge.",
   "homepage": "https://agentura-ci.vercel.app",
   "repository": {
