@@ -11,12 +11,12 @@ type ProblemCard = {
 const CARDS: ProblemCard[] = [
   {
     icon: "prompt",
-    title: "A prompt change shifts behavior downstream",
-    body: "YA tone adjustment that passes review can silently change how edge cases are handled.",
+    title: "Prompt change shifts behavior downstream",
+    body: "A tone adjustment that passes review can silently change how edge cases are handled.",
   },
   {
     icon: "model",
-    title: "Your provider updated the model",
+    title: "Anthropic / OpenAI / provider updated model",
     body: "Model providers update their models without notice. Outputs change.",
   },
   {

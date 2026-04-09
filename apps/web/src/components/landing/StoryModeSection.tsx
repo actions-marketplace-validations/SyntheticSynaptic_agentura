@@ -56,7 +56,7 @@ const STORY_CASES: StoryCase[] = [
   },
   {
     label: "Quorum",
-    description: "Three identical judges agreed on a wrong answer. A heterogeneous quorum caught it.",
+    description: "Three judges based on the same model agreed on a wrong answer. A heterogeneous quorum caught it.",
     rows: [
       { metric: "Accuracy (single)", baseline: "0.91", branch: "0.91", delta: "+0.00", gate: "PASS" },
       { metric: "Accuracy (quorum)", baseline: "0.91", branch: "0.64", delta: "-0.27", gate: "BLOCK" },
@@ -117,7 +117,7 @@ export function StoryModeSection() {
     <section className="story-section" id="story">
       <header className="section-head">
         <p className="section-label">SEE IT IN ACTION</p>
-        <h2 className="display-lg">Four ways agents break in production.</h2>
+        <h2 className="display-lg">Five ways agents break production</h2>
       </header>
 
       <div className="story-shell" onMouseEnter={() => setHoverPaused(true)} onMouseLeave={() => setHoverPaused(false)}>

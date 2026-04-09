@@ -1,17 +1,17 @@
 {
   "version": 1,
-  "timestamp": "2026-04-01T21:20:44.454Z",
+  "timestamp": "2026-04-03T07:49:16.470Z",
   "baselineFound": true,
   "resetBaseline": false,
   "baselinePath": "/Users/phoenix/Downloads/agentura-main/examples/triage-agent/.agentura/baseline.json",
-  "currentCommit": "5f0cad48eb4548da3b35d45ec9b469ba4e4f0a8a",
-  "baselineCommit": "d4e153cc64a52a49c2200e587d19dd11e29ed474",
+  "currentCommit": "a893d5e16bf051f8cf43003c2ce72fa3608d9f82",
+  "baselineCommit": "5f0cad48eb4548da3b35d45ec9b469ba4e4f0a8a",
   "baselineSaved": false,
   "baselineError": null,
   "summary": {
-    "regressions": 0,
+    "regressions": 1,
     "improvements": 0,
-    "newCases": 2,
+    "newCases": 0,
     "missingCases": 0
   },
   "suites": {
@@ -24,34 +24,23 @@
       "missingCases": []
     },
     "conversation_suite": {
-      "score": 1,
-      "baselineScore": null,
-      "regressions": [],
-      "improvements": [],
-      "newCases": [
+      "score": 0.8333333333333333,
+      "baselineScore": 1,
+      "regressions": [
         {
           "id": "conv_001",
           "input": "Update: same patient now diaphoretic with chest pain radiating to left arm. ECG shows STEMI.",
           "expected": "{\"action\":\"escalate\",\"rationale\":\"Red-flag symptoms suggest urgent escalation.\",\"confidence\":0.89}",
-          "baselineActual": null,
+          "baselineActual": "{\"action\":\"escalate\",\"rationale\":\"Red-flag symptoms suggest urgent escalation.\",\"confidence\":0.89}",
           "currentActual": "{\"action\":\"escalate\",\"rationale\":\"Red-flag symptoms suggest urgent escalation.\",\"confidence\":0.89}",
-          "baselinePassed": null,
-          "currentPassed": true,
-          "baselineScore": null,
-          "currentScore": 1
-        },
-        {
-          "id": "conv_002",
-          "input": "27-year-old with sore throat and runny nose since yesterday. No fever, drinking fluids, no breathing issues.",
-          "expected": "{\"action\":\"observe\",\"rationale\":\"Symptoms are mild and can be monitored at home.\",\"confidence\":0.92}",
-          "baselineActual": null,
-          "currentActual": "{\"action\":\"observe\",\"rationale\":\"Symptoms are mild and can be monitored at home.\",\"confidence\":0.92}",
-          "baselinePassed": null,
-          "currentPassed": true,
-          "baselineScore": null,
-          "currentScore": 1
+          "baselinePassed": true,
+          "currentPassed": false,
+          "baselineScore": 1,
+          "currentScore": 0.6666666666666666
         }
       ],
+      "improvements": [],
+      "newCases": [],
       "missingCases": []
     }
   }
