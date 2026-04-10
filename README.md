@@ -17,8 +17,6 @@ Run a real baseline vs branch comparison in your browser. No install. No account
 
 ## Try it in 60 seconds
 
-No signup. No GitHub App. Runs entirely on your machine.
-
 ```bash
 npx agentura@latest init
 npx agentura@latest run --local
